@@ -5,9 +5,11 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate:cloudbase-users": "node migrate_cloudbase_users_to_pg.cjs"
   },
   "dependencies": {
+    "@cloudbase/node-sdk": "^2.7.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "pg": "^8.12.0"
