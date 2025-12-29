@@ -1,0 +1,3162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>自由职业收入计算和工时导出（税前）</title>
+  <meta name="description" content="快速计算自由职业收入并导出工时表，支持按月/周/天/小时计算，自动排除节假日和周末，支持请假和加班计算，一键导出Excel工时表。">
+  <meta name="keywords" content="自由职业,收入计算,工时导出,税前收入,薪资计算,工作日计算,工时表导出,Excel导出">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.xmoto.top/">
+  <meta property="og:title" content="自由职业收入计算和工时导出（税前）">
+  <meta property="og:description" content="快速计算自由职业收入并导出工时表，支持按月/周/天/小时计算，自动排除节假日和周末，一键导出Excel工时表。">
+  
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://www.xmoto.top/">
+  <meta property="twitter:title" content="自由职业收入计算和工时导出（税前）">
+  <meta property="twitter:description" content="快速计算自由职业收入并导出工时表，支持按月/周/天/小时计算，自动排除节假日和周末，一键导出Excel工时表。">
+  
+  <!-- hreflang for multilingual support -->
+  <link rel="alternate" hreflang="zh-CN" href="https://www.xmoto.top/">
+  <link rel="alternate" hreflang="en" href="https://www.xmoto.top/en">
+  <link rel="alternate" hreflang="x-default" href="https://www.xmoto.top/">
+  
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-1WMWXSB8L3"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-1WMWXSB8L3');
+  </script>
+  
+  <!-- Google AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5242560852291414"
+     crossorigin="anonymous"></script>
+  
+  <style>
+    /* Apple-inspired Design System */
+    :root {
+      color-scheme: light dark;
+      /* Apple System Colors */
+      --system-blue: #007AFF;
+      --system-blue-hover: #0051D5;
+      --system-gray: #8E8E93;
+      --system-gray-light: #F2F2F7;
+      --system-gray-lighter: #FAFAFA;
+      --system-red: #FF3B30;
+      --system-red-hover: #D70015;
+      --system-green: #34C759;
+      --text-primary: #000000;
+      --text-secondary: #3C3C43;
+      --text-tertiary: #8E8E93;
+      --background-primary: #FFFFFF;
+      --background-secondary: #F2F2F7;
+      --border-color: #C6C6C8;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    /* Dark Mode Support */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --text-primary: #FFFFFF;
+        --text-secondary: #EBEBF5;
+        --text-tertiary: #8E8E93;
+        --background-primary: #1C1C1E;
+        --background-secondary: #000000;
+        --border-color: #38383A;
+        --system-gray-light: #2C2C2E;
+        --system-gray-lighter: #1C1C1E;
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    [data-theme="dark"] {
+      --text-primary: #FFFFFF;
+      --text-secondary: #EBEBF5;
+      --text-tertiary: #8E8E93;
+      --background-primary: #1C1C1E;
+      --background-secondary: #000000;
+      --border-color: #38383A;
+      --system-gray-light: #2C2C2E;
+      --system-gray-lighter: #1C1C1E;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+
+    [data-theme="light"] {
+      --text-primary: #000000;
+      --text-secondary: #3C3C43;
+      --text-tertiary: #8E8E93;
+      --background-primary: #FFFFFF;
+      --background-secondary: #F2F2F7;
+      --border-color: #C6C6C8;
+      --system-gray-light: #F2F2F7;
+      --system-gray-lighter: #FAFAFA;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 2.5rem 1.5rem;
+      background: var(--background-secondary);
+      color: var(--text-primary);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin: 0 0 0.5rem 0;
+      color: var(--text-primary);
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text-primary);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--background-primary);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 2.5rem;
+      transition: box-shadow 0.3s ease;
+    }
+
+    .container:hover {
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+    }
+
+    form {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      margin-bottom: 2rem;
+    }
+
+    .form-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-weight: 500;
+      font-size: 0.9375rem;
+      gap: 0.5rem;
+      color: var(--text-secondary);
+    }
+
+    input, select {
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      font-family: inherit;
+      background: var(--background-primary);
+      color: var(--text-primary);
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--system-blue);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    }
+
+    input[readonly] {
+      background: var(--system-gray-lighter);
+      color: var(--text-secondary);
+      cursor: default;
+    }
+
+    button {
+      grid-column: 1 / -1;
+      background: var(--system-blue);
+      color: #fff;
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 0.875rem 1.5rem;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--system-blue-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .results {
+      background: var(--system-gray-lighter);
+      border-radius: var(--radius-md);
+      padding: 2rem;
+      margin-top: 2rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+    }
+
+    .card {
+      background: var(--background-primary);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s ease;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .card h3 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+
+    .note {
+      margin-top: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--text-tertiary);
+      line-height: 1.6;
+    }
+
+    .leave-section {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      background: var(--system-gray-lighter);
+    }
+
+    .leave-section > label {
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .leave-ranges {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .leave-range {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 1rem;
+      background: var(--background-primary);
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .leave-range label {
+      flex: 1;
+      min-width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-weight: 500;
+    }
+
+    .leave-range button {
+      align-self: center;
+      background: var(--system-red);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .leave-range button:hover {
+      background: var(--system-red-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .leave-actions {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+      font-size: 0.875rem;
+      color: var(--text-tertiary);
+    }
+
+    .leave-actions button {
+      background: var(--system-blue);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .leave-actions button:hover {
+      background: var(--system-blue-hover);
+      transform: translateY(-1px);
+    }
+
+    .leave-total {
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .leave-total.visible {
+      display: flex;
+    }
+
+    .leave-total input {
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.625rem 1rem;
+      background: var(--background-primary);
+      font-weight: 600;
+    }
+
+    .hours-hint {
+      font-size: 0.8125rem;
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+
+    .details-section {
+      margin-top: 2rem;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      background: var(--background-primary);
+    }
+
+    .details-section h3 {
+      margin: 0 0 1.25rem 0;
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .details-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0;
+    }
+
+    .details-table th,
+    .details-table td {
+      border-bottom: 1px solid var(--system-gray-light);
+      padding: 0.875rem 0.75rem;
+      text-align: left;
+      font-size: 0.9375rem;
+    }
+
+    .details-table td:first-child {
+      text-align: center;
+      width: 60px;
+      min-width: 60px;
+    }
+
+    .details-table td:nth-child(2) {
+      white-space: nowrap;
+      min-width: 110px;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+    }
+
+    .details-table th {
+      background: var(--system-gray-lighter);
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .details-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .details-table tr:hover {
+      background: var(--system-gray-lighter);
+    }
+
+    .details-table input {
+      width: 100%;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem;
+      font-size: 0.9375rem;
+      background: var(--background-primary);
+    }
+
+    .details-table input:focus {
+      outline: none;
+      border-color: var(--system-blue);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    }
+
+    .results-wrapper {
+      position: relative;
+    }
+
+    .export-button {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: var(--system-green);
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-weight: 600;
+      padding: 0.625rem 1.25rem;
+      cursor: pointer;
+      font-size: 0.9375rem;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .export-button:hover:not(:disabled) {
+      background: #30B650;
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .export-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .details-section ul,
+    .details-section ol {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .details-section li {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--system-gray-light);
+      padding-bottom: 0.75rem;
+    }
+
+    .details-section li:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .details-section li span:last-child {
+      color: var(--text-secondary);
+    }
+
+    .text-danger {
+      color: var(--system-red);
+      font-weight: 600;
+    }
+
+    /* Top Right Buttons Container */
+    .top-right-buttons {
+      position: fixed;
+      top: 1.5rem;
+      right: 1.5rem;
+      display: flex;
+      gap: 0.75rem;
+      z-index: 1000;
+    }
+
+    /* Theme Toggle Button */
+    .theme-toggle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--background-primary);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+    }
+
+    .theme-toggle:hover {
+      transform: scale(1.1);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .theme-toggle svg {
+      width: 20px;
+      height: 20px;
+      fill: var(--text-primary);
+      transition: transform 0.3s ease;
+    }
+
+    .theme-toggle:hover svg {
+      transform: rotate(20deg);
+    }
+
+    /* Language Switcher Button */
+    .lang-switcher {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--background-primary);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .lang-switcher:hover {
+      transform: scale(1.1);
+      box-shadow: var(--shadow-lg);
+      background: var(--system-blue);
+      border-color: var(--system-blue);
+      color: #fff;
+    }
+
+    .lang-switcher svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      transition: transform 0.3s ease;
+    }
+
+    .lang-switcher:hover svg {
+      transform: rotate(15deg);
+    }
+
+    /* Contact Link Button */
+    .contact-link {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--background-primary);
+      border: 1px solid var(--border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-md);
+      transition: all 0.3s ease;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .contact-link:hover {
+      transform: scale(1.1);
+      box-shadow: var(--shadow-lg);
+      background: var(--system-blue);
+      border-color: var(--system-blue);
+      color: #fff;
+    }
+
+    .contact-link svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      transition: transform 0.3s ease;
+    }
+
+    .contact-link:hover svg {
+      transform: translateY(-2px);
+    }
+
+    /* Loading State */
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(0, 122, 255, 0.2);
+      border-top-color: var(--system-blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .button-loading {
+      position: relative;
+      color: transparent !important;
+    }
+
+    .button-loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* Subtle animations */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.7;
+      }
+    }
+
+    .results {
+      animation: fadeIn 0.4s ease;
+    }
+
+    .card {
+      animation: fadeIn 0.5s ease backwards;
+    }
+
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
+    .card:nth-child(3) { animation-delay: 0.3s; }
+
+    .details-section {
+      animation: slideIn 0.4s ease;
+    }
+
+    /* Success Animation */
+    @keyframes checkmark {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+      50% {
+        transform: scale(1.2);
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .success-indicator {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      margin-left: 0.5rem;
+      animation: checkmark 0.5s ease;
+    }
+
+    /* Icon Styles */
+    .icon {
+      width: 16px;
+      height: 16px;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+
+    .icon svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 1rem 0.75rem;
+      }
+      .container {
+        padding: 1.5rem;
+        border-radius: var(--radius-md);
+      }
+      h1 {
+        font-size: 1.75rem;
+      }
+      form {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .top-right-buttons {
+        top: 1rem;
+        right: 1rem;
+        gap: 0.5rem;
+      }
+      .theme-toggle,
+      .contact-link,
+      .lang-switcher {
+        width: 40px;
+        height: 40px;
+      }
+      .theme-toggle svg,
+      .contact-link svg,
+      .lang-switcher svg {
+        width: 18px;
+        height: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Right Buttons -->
+  <div class="top-right-buttons">
+    <!-- Language Switcher -->
+    <a href="/en" class="lang-switcher" aria-label="English" title="Switch to English">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+    </a>
+    <!-- Contact Link -->
+    <a href="mailto:bcboliverjames@gmail.com" class="contact-link" aria-label="联系我们" title="联系我们">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+        <polyline points="22,6 12,13 2,6"></polyline>
+      </svg>
+    </a>
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="切换主题" title="切换深色/浅色模式">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.834a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.166 7.758a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="container">
+    <h1>自由职业收入计算和工时导出（税前）</h1>
+    <p style="text-align:center;color:var(--text-tertiary);margin-top:0.5rem;font-size:0.9375rem;font-weight:400;">按月 / 周 / 天 / 小时快速估算可收入 _ 由一个SAP自由顾问开发</p>
+    <form id="income-form">
+      <div class="form-row">
+        <label>
+          时间区间
+          <select id="timeRange" name="timeRange">
+            <option value="lastMonth" selected>上月</option>
+            <option value="currentMonth">当月</option>
+            <option value="nextMonth">下月</option>
+            <option value="custom">其他</option>
+          </select>
+        </label>
+      <label>
+        开始日期
+        <input type="date" name="startDate" required>
+      </label>
+      <label>
+        结束日期
+        <input type="date" name="endDate" required>
+      </label>
+      <label>
+        所属国家/地区
+        <select name="country" required>
+          <option value="china">中国</option>
+          <option value="us">美国</option>
+          <!-- 欧洲国家 -->
+          <option value="russia">俄罗斯</option>
+          <option value="germany">德国</option>
+          <option value="uk">英国</option>
+          <option value="france">法国</option>
+          <option value="italy">意大利</option>
+          <option value="spain">西班牙</option>
+          <option value="poland">波兰</option>
+          <option value="ukraine">乌克兰</option>
+          <option value="romania">罗马尼亚</option>
+          <option value="netherlands">荷兰</option>
+          <!-- 亚洲国家 -->
+          <option value="japan">日本</option>
+          <option value="korea">韩国</option>
+          <option value="singapore">新加坡</option>
+          <option value="india">印度</option>
+          <option value="indonesia">印度尼西亚</option>
+        </select>
+      </label>
+      </div>
+      <div class="leave-section">
+        <label>
+          是否有请假（无薪日）
+          <select id="leaveToggle" name="leaveToggle">
+            <option value="no" selected>否</option>
+            <option value="yes">是</option>
+          </select>
+        </label>
+        <div id="leaveRanges" class="leave-ranges" hidden>
+          <div id="leaveRangesList" class="leave-ranges-list"></div>
+          <div class="leave-actions">
+            <button type="button" id="addLeaveRange">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:0.5rem;">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              新增请假区间
+            </button>
+            <span class="range-hint">请假区间包含开始和结束日期，新增多段请假可多次添加。</span>
+          </div>
+          <div class="leave-total" id="leaveTotalContainer" hidden>
+            <label>
+              总请假天数
+              <input type="text" id="leaveTotal" readonly value="0 天">
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="leave-section" aria-label="加班设置">
+        <label>
+          是否有加班（计薪）
+          <select id="overtimeToggle" name="overtimeToggle">
+            <option value="no" selected>否</option>
+            <option value="yes">是</option>
+          </select>
+        </label>
+        <div id="overtimeRanges" class="leave-ranges" hidden>
+          <div id="overtimeRangesList" class="leave-ranges-list"></div>
+          <div class="leave-actions">
+            <button type="button" id="addOvertimeRange">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:0.5rem;">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              新增加班区间
+            </button>
+            <span class="range-hint">加班区间包含开始和结束日期，可添加多段加班区间。</span>
+          </div>
+          <div class="leave-total" id="overtimeTotalContainer" hidden>
+            <label>
+              总加班天数
+              <input type="text" id="overtimeTotal" readonly value="0 天">
+            </label>
+            <small class="hours-hint">（8 个小时换算为 1 天，1 个自然日最多加班 24 小时，可换算为 3 天）</small>
+          </div>
+        </div>
+      </div>
+      <label>
+        薪资方案
+        <select id="rateType" name="rateType" required>
+          <option value="daily" selected>日薪</option>
+          <option value="hourly">时薪</option>
+          <option value="monthly">月薪</option>
+        </select>
+      </label>
+      <label>
+        金额
+        <input type="number" id="rateAmount" name="rateAmount" min="0" step="0.01" placeholder="请输入对应薪资金额" value="100" required>
+      </label>
+      <label>
+        币种
+        <input type="text" id="currencyDisplay" readonly value="--">
+      </label>
+      <button type="submit" id="calculateButton">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:0.5rem;">
+          <path d="M9 11l3 3L22 4"></path>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+        </svg>
+        计算收入
+      </button>
+    </form>
+
+    <div class="results-wrapper">
+      <button type="button" id="exportResults" class="export-button" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:0.5rem;">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        导出结果（Excel）
+      </button>
+    <div class="results" id="results">
+      <h2>请填写信息并计算</h2>
+      <p class="note">系统会根据工作日（剔除双休日与法定节假日）估算工作时长与收入。</p>
+    </div>
+    </div>
+    
+    <!-- Footer -->
+    <footer style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--border-color); text-align: center; color: var(--text-tertiary); font-size: 0.875rem;">
+      <p style="margin: 0.5rem 0;">
+        <a href="/help.html" style="color: var(--system-blue); text-decoration: none; margin: 0 0.5rem;">使用帮助</a> |
+        <a href="/faq.html" style="color: var(--system-blue); text-decoration: none; margin: 0 0.5rem;">常见问题</a> |
+        <a href="/about.html" style="color: var(--system-blue); text-decoration: none; margin: 0 0.5rem;">关于我们</a> |
+        <a href="/privacy.html" style="color: var(--system-blue); text-decoration: none; margin: 0 0.5rem;">隐私政策</a> |
+        <a href="/en" style="color: var(--system-blue); text-decoration: none; margin: 0 0.5rem;">English</a>
+      </p>
+      <p style="margin: 0.5rem 0;">&copy; 2024 自由职业收入计算和工时导出。保留所有权利。</p>
+    </footer>
+  </div>
+
+  <script>
+    const HOLIDAY_CONFIG = {
+      // 官方节假日维护：优先参考国务院发布的《部分节假日安排》文件，
+      // 可接入公开API（如国务院客户端/第三方日历服务）在构建或运行时刷新本表。
+      china: {
+        recurring: [
+          { date: '01-01', label: '元旦' },
+          { date: '04-04', label: '清明节' },
+          { date: '05-01', label: '劳动节' },
+          { date: '06-10', label: '端午节' }
+        ],
+        yearSpecific: {
+          2025: [
+            { date: '2025-02-10', label: '春节假期' },
+            { date: '2025-02-11', label: '春节假期' },
+            { date: '2025-02-12', label: '春节假期' },
+            { date: '2025-02-13', label: '春节假期' },
+            { date: '2025-02-14', label: '春节假期' },
+            { date: '2025-02-15', label: '春节假期' },
+            { date: '2025-02-16', label: '春节假期' },
+            { date: '2025-05-02', label: '劳动节假期' },
+            { date: '2025-05-05', label: '劳动节假期' },
+            { date: '2025-09-17', label: '中秋节' },
+            { date: '2025-10-01', label: '国庆节假期' },
+            { date: '2025-10-02', label: '国庆节假期' },
+            { date: '2025-10-03', label: '国庆节假期' },
+            { date: '2025-10-04', label: '国庆节假期' },
+            { date: '2025-10-05', label: '国庆节假期' },
+            { date: '2025-10-06', label: '国庆节假期' },
+            { date: '2025-10-07', label: '国庆节假期' },
+            { date: '2025-10-08', label: '国庆节假期' }
+          ]
+        },
+        makeupWorkdays: {
+          2025: [
+            { date: '2025-01-26', label: '春节调休补班' },
+            { date: '2025-02-08', label: '春节调休补班' },
+            { date: '2025-09-28', label: '国庆调休补班' },
+            { date: '2025-10-11', label: '国庆调休补班' }
+          ]
+        }
+      },
+      us: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '01-20', label: 'MLK Day' },
+          { date: '02-17', label: 'Presidents\' Day' },
+          { date: '05-26', label: 'Memorial Day' },
+          { date: '07-04', label: 'Independence Day' },
+          { date: '09-01', label: 'Labor Day' },
+          { date: '11-27', label: 'Thanksgiving' },
+          { date: '11-28', label: 'Thanksgiving' },
+          { date: '12-25', label: 'Christmas' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      // 欧洲国家（按人口排序）
+      russia: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '01-07', label: 'Orthodox Christmas' },
+          { date: '02-23', label: 'Defender of the Fatherland Day' },
+          { date: '03-08', label: 'International Women\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '05-09', label: 'Victory Day' },
+          { date: '06-12', label: 'Russia Day' },
+          { date: '11-04', label: 'Unity Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      germany: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '10-03', label: 'German Unity Day' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      uk: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Early May Bank Holiday' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      france: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '05-08', label: 'Victory Day' },
+          { date: '07-14', label: 'Bastille Day' },
+          { date: '08-15', label: 'Assumption Day' },
+          { date: '11-01', label: 'All Saints\' Day' },
+          { date: '11-11', label: 'Armistice Day' },
+          { date: '12-25', label: 'Christmas Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      italy: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '04-25', label: 'Liberation Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '06-02', label: 'Republic Day' },
+          { date: '08-15', label: 'Assumption Day' },
+          { date: '11-01', label: 'All Saints\' Day' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      spain: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '10-12', label: 'National Day' },
+          { date: '11-01', label: 'All Saints\' Day' },
+          { date: '12-06', label: 'Constitution Day' },
+          { date: '12-25', label: 'Christmas Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      poland: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '05-03', label: 'Constitution Day' },
+          { date: '08-15', label: 'Assumption Day' },
+          { date: '11-01', label: 'All Saints\' Day' },
+          { date: '11-11', label: 'Independence Day' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      ukraine: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '01-07', label: 'Orthodox Christmas' },
+          { date: '03-08', label: 'International Women\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '05-09', label: 'Victory Day' },
+          { date: '06-28', label: 'Constitution Day' },
+          { date: '08-24', label: 'Independence Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      romania: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '01-02', label: 'Day after New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '06-01', label: 'Children\'s Day' },
+          { date: '08-15', label: 'Assumption Day' },
+          { date: '11-30', label: 'National Day' },
+          { date: '12-01', label: 'National Day' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      netherlands: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '04-27', label: 'King\'s Day' },
+          { date: '05-05', label: 'Liberation Day' },
+          { date: '12-25', label: 'Christmas Day' },
+          { date: '12-26', label: 'Boxing Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      // 亚洲国家
+      japan: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '02-11', label: 'National Foundation Day' },
+          { date: '04-29', label: 'Showa Day' },
+          { date: '05-03', label: 'Constitution Memorial Day' },
+          { date: '05-04', label: 'Greenery Day' },
+          { date: '05-05', label: 'Children\'s Day' },
+          { date: '08-11', label: 'Mountain Day' },
+          { date: '11-03', label: 'Culture Day' },
+          { date: '11-23', label: 'Labour Thanksgiving Day' },
+          { date: '12-23', label: 'Emperor\'s Birthday' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      korea: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '03-01', label: 'Independence Movement Day' },
+          { date: '05-05', label: 'Children\'s Day' },
+          { date: '06-06', label: 'Memorial Day' },
+          { date: '08-15', label: 'Liberation Day' },
+          { date: '10-03', label: 'National Foundation Day' },
+          { date: '10-09', label: 'Hangul Day' },
+          { date: '12-25', label: 'Christmas Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      singapore: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '08-09', label: 'National Day' },
+          { date: '12-25', label: 'Christmas Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      india: {
+        recurring: [
+          { date: '01-26', label: 'Republic Day' },
+          { date: '08-15', label: 'Independence Day' },
+          { date: '10-02', label: 'Gandhi Jayanti' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      },
+      indonesia: {
+        recurring: [
+          { date: '01-01', label: 'New Year\'s Day' },
+          { date: '05-01', label: 'Labour Day' },
+          { date: '08-17', label: 'Independence Day' },
+          { date: '12-25', label: 'Christmas Day' }
+        ],
+        yearSpecific: {},
+        makeupWorkdays: {}
+      }
+    };
+
+    // 国家代码映射表（用于Nager.Date API）
+    const COUNTRY_CODE_MAP = {
+      // 现有国家
+      china: null, // 中国使用GitHub API，不使用Nager.Date
+      us: 'US',
+      
+      // 欧洲国家（按人口排序）
+      russia: 'RU',
+      germany: 'DE',
+      uk: 'GB', // 注意：Nager.Date使用GB而非UK
+      france: 'FR',
+      italy: 'IT',
+      spain: 'ES',
+      poland: 'PL',
+      ukraine: 'UA',
+      romania: 'RO',
+      netherlands: 'NL',
+      
+      // 亚洲国家
+      japan: 'JP',
+      korea: 'KR',
+      singapore: 'SG',
+      india: 'IN',
+      indonesia: 'ID'
+    };
+
+    const CURRENCY_MAP = {
+      // 现有国家
+      china: '人民币 (CNY)',
+      us: '美元 (USD)',
+      
+      // 欧洲国家
+      russia: '俄罗斯卢布 (RUB)',
+      germany: '欧元 (EUR)',
+      uk: '英镑 (GBP)',
+      france: '欧元 (EUR)',
+      italy: '欧元 (EUR)',
+      spain: '欧元 (EUR)',
+      poland: '波兰兹罗提 (PLN)',
+      ukraine: '乌克兰格里夫纳 (UAH)',
+      romania: '罗马尼亚列伊 (RON)',
+      netherlands: '欧元 (EUR)',
+      
+      // 亚洲国家
+      japan: '日元 (JPY)',
+      korea: '韩元 (KRW)',
+      singapore: '新加坡元 (SGD)',
+      india: '印度卢比 (INR)',
+      indonesia: '印尼盾 (IDR)'
+    };
+  // 按语言推导的默认国家映射（全小写匹配，先全量后基础语言码）
+  const LANGUAGE_DEFAULT_COUNTRY_MAP = {
+    'zh-cn': 'china',
+    zh: 'china',
+    'en-us': 'us',
+    'en-gb': 'uk',
+    en: 'us',
+    ja: 'japan',
+    ko: 'korea',
+    de: 'germany',
+    fr: 'france',
+    es: 'spain',
+    ru: 'russia',
+    id: 'indonesia',
+    hi: 'india',
+    nl: 'netherlands'
+  };
+    const holidayLabelCache = new Map();
+    const makeupLabelCache = new Map();
+
+    // 节假日数据加载系统
+    const HOLIDAY_DATA_SOURCE = {
+      // GitHub 数据源（主要）
+      github: 'https://raw.githubusercontent.com/NateScarlet/holiday-cn/master',
+      // 备用数据源
+      backup: 'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master'
+    };
+
+    // 本地缓存管理
+    function getCachedHolidayData(year) {
+      try {
+        const cached = localStorage.getItem(`holiday_data_${year}`);
+        if (cached) {
+          const data = JSON.parse(cached);
+          // 检查缓存是否有效（只要缓存存在且数据不为空就使用）
+          // 对于未来年份，只要缓存存在就使用（因为数据源可能还没更新）
+          if (data.data && (data.data.yearSpecific?.[year] || data.data.makeupWorkdays?.[year])) {
+            return data.data;
+          }
+        }
+      } catch (e) {
+        console.warn('读取节假日缓存失败:', e);
+      }
+      return null;
+    }
+
+    function setCachedHolidayData(year, data) {
+      try {
+        const cacheData = {
+          cacheYear: new Date().getFullYear(),
+          data: data,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(`holiday_data_${year}`, JSON.stringify(cacheData));
+      } catch (e) {
+        console.warn('保存节假日缓存失败:', e);
+      }
+    }
+
+    // 从 Nager.Date API 加载节假日数据
+    async function loadHolidayDataFromNagerAPI(countryCode, year) {
+      const url = `https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`;
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超时
+        
+        const response = await fetch(url, {
+          signal: controller.signal,
+          cache: 'default',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`[Nager API] ${countryCode} ${year}年数据加载成功，数量:`, data.length);
+          
+          // 转换数据格式
+          const yearSpecific = [];
+          data.forEach(item => {
+            if (item.date && item.localName) {
+              yearSpecific.push({
+                date: item.date,
+                label: item.localName
+              });
+            }
+          });
+          
+          const result = {
+            yearSpecific: yearSpecific.length > 0 ? { [year]: yearSpecific } : {},
+            makeupWorkdays: {} // Nager.Date API 不提供调休补班数据
+          };
+          
+          // 缓存数据
+          const cacheKey = `nager_holiday_${countryCode}_${year}`;
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+              data: result,
+              timestamp: Date.now()
+            }));
+          } catch (e) {
+            console.warn('缓存Nager API数据失败:', e);
+          }
+          
+          return result;
+        } else {
+          console.warn(`[Nager API] ${countryCode} ${year}年返回状态码: ${response.status}`);
+          return null;
+        }
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          console.warn(`[Nager API] ${countryCode} ${year}年请求超时`);
+        } else {
+          console.warn(`[Nager API] ${countryCode} ${year}年加载失败:`, error);
+        }
+        return null;
+      }
+    }
+
+    // 获取缓存的Nager API数据
+    function getCachedNagerData(countryCode, year) {
+      try {
+        const cacheKey = `nager_holiday_${countryCode}_${year}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const data = JSON.parse(cached);
+          // 缓存有效期1年
+          if (data.data && Date.now() - data.timestamp < 365 * 24 * 60 * 60 * 1000) {
+            return data.data;
+          }
+        }
+      } catch (e) {
+        console.warn('读取Nager API缓存失败:', e);
+      }
+      return null;
+    }
+
+    // 从 GitHub 加载节假日数据
+    async function loadHolidayDataFromGitHub(year) {
+      const urls = [
+        `${HOLIDAY_DATA_SOURCE.github}/${year}.json`,
+        `${HOLIDAY_DATA_SOURCE.backup}/${year}.json`
+      ];
+
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            cache: 'default',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`[节假日数据] 从 ${url} 加载成功，原始数据:`, data);
+            console.log(`[节假日数据] 数据类型:`, typeof data, Array.isArray(data) ? 'Array' : 'Object');
+            console.log(`[节假日数据] 数据键:`, Object.keys(data || {}));
+            // 输出前几个条目以便调试
+            if (data && typeof data === 'object') {
+              const entries = Object.entries(data).slice(0, 3);
+              console.log(`[节假日数据] 数据示例（前3个）:`, entries);
+              // 特别检查 days 字段
+              if (data.days) {
+                console.log(`[节假日数据] days 字段类型:`, typeof data.days, Array.isArray(data.days) ? 'Array' : 'Object');
+                console.log(`[节假日数据] days 字段键数量:`, Object.keys(data.days || {}).length);
+                const daysEntries = Object.entries(data.days || {}).slice(0, 5);
+                console.log(`[节假日数据] days 字段示例（前5个）:`, daysEntries);
+                // 检查是否有目标年份的数据
+                const yearKeys = Object.keys(data.days || {}).filter(k => k.startsWith(String(year)));
+                console.log(`[节假日数据] ${year}年的日期键数量:`, yearKeys.length);
+                if (yearKeys.length > 0) {
+                  console.log(`[节假日数据] ${year}年的日期键示例:`, yearKeys.slice(0, 3));
+                  console.log(`[节假日数据] ${year}年的日期数据示例:`, yearKeys.slice(0, 3).map(k => [k, data.days[k]]));
+                }
+              }
+            }
+            const parsed = parseGitHubHolidayData(data, year);
+            console.log(`[节假日数据] ${year}年解析后的完整结果:`, JSON.stringify(parsed, null, 2));
+            if (parsed && (parsed.yearSpecific[year]?.length > 0 || parsed.makeupWorkdays[year]?.length > 0)) {
+              console.log(`[节假日数据] ${year}年解析成功:`, parsed);
+              setCachedHolidayData(year, parsed);
+              return parsed;
+            } else {
+              console.warn(`[节假日数据] ${year}年数据解析后为空:`, parsed);
+              console.warn(`[节假日数据] 解析结果详情:`, {
+                hasYearSpecific: !!parsed?.yearSpecific?.[year],
+                yearSpecificLength: parsed?.yearSpecific?.[year]?.length || 0,
+                hasMakeupWorkdays: !!parsed?.makeupWorkdays?.[year],
+                makeupWorkdaysLength: parsed?.makeupWorkdays?.[year]?.length || 0,
+                parsedKeys: Object.keys(parsed || {}),
+                yearSpecificKeys: Object.keys(parsed?.yearSpecific || {}),
+                makeupWorkdaysKeys: Object.keys(parsed?.makeupWorkdays || {})
+              });
+            }
+          } else {
+            console.warn(`[节假日数据] ${url} 返回状态码: ${response.status}`);
+          }
+        } catch (error) {
+          console.warn(`[节假日数据] 从 ${url} 加载失败:`, error);
+          continue;
+        }
+      }
+      console.warn(`[节假日数据] ${year}年数据加载失败，所有数据源都不可用`);
+      return null;
+    }
+
+    // 解析 GitHub 数据格式
+    function parseGitHubHolidayData(data, year) {
+      try {
+        const yearSpecific = [];
+        const makeupWorkdays = [];
+
+        console.log(`[解析] 开始解析${year}年数据，数据类型:`, typeof data, Array.isArray(data));
+        
+        // holiday-cn 的实际数据格式可能是：
+        // 1. { "days": { "2025-01-01": { "isOffDay": true, "name": "元旦" } } }
+        // 2. { "2025-01-01": { "isOffDay": true, "name": "元旦" } }
+        // 3. { "2025": { "days": { "2025-01-01": {...} } } }
+        // 4. 数组格式: [{ "date": "2025-01-01", "name": "元旦", "isOffDay": true }]
+        
+        let daysData = null;
+        
+        // 情况1: 数据是数组
+        if (Array.isArray(data)) {
+          console.log(`[解析] 数据是数组格式，长度:`, data.length);
+          data.forEach(item => {
+            if (typeof item === 'object' && item !== null) {
+              const date = item.date || item.Date || item.DATE;
+              const name = item.name || item.Name || item.label || item.title || '节假日';
+              const isOffDay = item.isOffDay !== undefined ? item.isOffDay : 
+                              (item.isOffDay === false ? false : true);
+              
+              if (date && date.startsWith(String(year))) {
+                if (isOffDay) {
+                  yearSpecific.push({ date, label: name });
+                } else {
+                  const label = name.includes('调休') || name.includes('补班') 
+                    ? name 
+                    : `${name}（调休补班）`;
+                  makeupWorkdays.push({ date, label });
+                }
+              }
+            }
+          });
+        }
+        // 情况2: 数据有年份键
+        else if (data[year] && typeof data[year] === 'object') {
+          console.log(`[解析] 数据有年份键 ${year}`);
+          const yearData = data[year];
+          if (yearData.days && typeof yearData.days === 'object') {
+            daysData = yearData.days;
+          } else {
+            daysData = yearData;
+          }
+        }
+        // 情况3: 数据有 days 字段
+        else if (data.days) {
+          console.log(`[解析] 数据有 days 字段，类型:`, typeof data.days, Array.isArray(data.days) ? 'Array' : 'Object');
+          // days 可能是数组或对象
+          if (Array.isArray(data.days)) {
+            // 数组格式：直接处理数组
+            console.log(`[解析] days 是数组格式，长度:`, data.days.length);
+            data.days.forEach(item => {
+              if (typeof item === 'object' && item !== null) {
+                const date = item.date || item.Date || item.DATE;
+                const name = item.name || item.Name || item.label || item.Label || item.title || item.Title || '节假日';
+                // isOffDay 的判断逻辑
+                let isOffDay;
+                if (item.isOffDay !== undefined) {
+                  isOffDay = item.isOffDay;
+                } else if (item.type === 'holiday' || item.holiday === true) {
+                  isOffDay = true;
+                } else if (item.type === 'workday' || item.workday === true) {
+                  isOffDay = false;
+                } else {
+                  // 默认根据名称判断
+                  isOffDay = !(name.includes('调休') || name.includes('补班') || name.includes('上班'));
+                }
+                
+                if (date && date.startsWith(String(year))) {
+                  if (isOffDay) {
+                    yearSpecific.push({ date, label: name });
+                  } else {
+                    const label = name.includes('调休') || name.includes('补班') 
+                      ? name 
+                      : `${name}（调休补班）`;
+                    makeupWorkdays.push({ date, label });
+                  }
+                }
+              }
+            });
+            // 数组已处理，跳过后续对象处理
+            daysData = null;
+          } else if (typeof data.days === 'object') {
+            daysData = data.days;
+          }
+        }
+        // 情况4: 数据直接是日期键值对
+        else if (typeof data === 'object' && data !== null) {
+          console.log(`[解析] 数据直接是对象格式`);
+          daysData = data;
+        }
+
+        // 处理对象格式的数据
+        if (daysData && typeof daysData === 'object' && !Array.isArray(daysData)) {
+          const allKeys = Object.keys(daysData);
+          const yearKeys = allKeys.filter(k => k.startsWith(String(year)));
+          console.log(`[解析] 处理对象格式数据，总键数量:`, allKeys.length, `，${year}年键数量:`, yearKeys.length);
+          if (yearKeys.length === 0 && allKeys.length > 0) {
+            console.warn(`[解析] 警告：没有找到${year}年的数据，但总共有${allKeys.length}个键`);
+            console.log(`[解析] 所有键的前10个:`, allKeys.slice(0, 10));
+          }
+          Object.entries(daysData).forEach(([dateStr, info]) => {
+            // 只处理指定年份的数据
+            if (!dateStr.startsWith(String(year))) {
+              return;
+            }
+            
+            const date = dateStr;
+            let name, isOffDay;
+            
+            if (typeof info === 'object' && info !== null) {
+              name = info.name || info.Name || info.label || info.Label || info.title || info.Title || '节假日';
+              // isOffDay 的判断逻辑
+              if (info.isOffDay !== undefined) {
+                isOffDay = info.isOffDay;
+              } else if (info.type === 'holiday' || info.holiday === true) {
+                isOffDay = true;
+              } else if (info.type === 'workday' || info.workday === true) {
+                isOffDay = false;
+              } else {
+                // 默认根据名称判断
+                isOffDay = !(name.includes('调休') || name.includes('补班') || name.includes('上班'));
+              }
+            } else if (typeof info === 'string') {
+              name = info;
+              isOffDay = !(info.includes('调休') || info.includes('补班') || info.includes('上班'));
+            } else if (typeof info === 'boolean') {
+              // 如果值是布尔值，true表示节假日，false表示工作日
+              isOffDay = info;
+              name = info ? '节假日' : '工作日';
+            } else {
+              console.warn(`[解析] 跳过无法解析的数据:`, dateStr, info);
+              return;
+            }
+
+            if (isOffDay) {
+              yearSpecific.push({ date, label: name });
+            } else {
+              // 调休补班（isOffDay = false 表示需要上班）
+              const label = name.includes('调休') || name.includes('补班') 
+                ? name 
+                : `${name}（调休补班）`;
+              makeupWorkdays.push({ date, label });
+            }
+          });
+        }
+
+        console.log(`[解析] ${year}年解析结果:`, {
+          yearSpecific: yearSpecific.length,
+          makeupWorkdays: makeupWorkdays.length,
+          yearSpecificDetails: yearSpecific.slice(0, 3),
+          makeupWorkdaysDetails: makeupWorkdays.slice(0, 3)
+        });
+
+        return {
+          yearSpecific: yearSpecific.length > 0 ? { [year]: yearSpecific } : {},
+          makeupWorkdays: makeupWorkdays.length > 0 ? { [year]: makeupWorkdays } : {}
+        };
+      } catch (e) {
+        console.error('[解析] 解析节假日数据失败:', e, data);
+        return null;
+      }
+    }
+
+    // 正在加载的数据缓存（避免重复请求）
+    const loadingDataCache = new Map();
+
+    // 智能加载节假日数据（带缓存和降级）
+    async function loadHolidayDataForYear(country, year) {
+      const cacheKey = `${country}-${year}`;
+      // 如果正在加载，等待加载完成
+      if (loadingDataCache.has(cacheKey)) {
+        return await loadingDataCache.get(cacheKey);
+      }
+
+      // 创建加载 Promise
+      const loadPromise = (async () => {
+        // 中国：使用GitHub API
+        if (country === 'china') {
+          // 1. 先检查本地缓存
+          const cached = getCachedHolidayData(year);
+          if (cached) {
+            return cached;
+          }
+
+          // 2. 尝试从 GitHub 加载
+          const githubData = await loadHolidayDataFromGitHub(year);
+          if (githubData) {
+            return githubData;
+          }
+
+          // 3. 降级：使用硬编码的本地数据
+          console.warn(`无法加载 ${year} 年节假日数据，使用本地缓存`);
+          return getLocalHolidayData(country, year);
+        }
+        
+        // 其他国家：使用Nager.Date API
+        const countryCode = COUNTRY_CODE_MAP[country];
+        if (!countryCode) {
+          // 没有API支持，直接使用硬编码数据
+          return getLocalHolidayData(country, year);
+        }
+        
+        // 1. 先检查Nager API缓存
+        const cachedNager = getCachedNagerData(countryCode, year);
+        if (cachedNager) {
+          return cachedNager;
+        }
+        
+        // 2. 尝试从Nager.Date API加载
+        const nagerData = await loadHolidayDataFromNagerAPI(countryCode, year);
+        if (nagerData) {
+          return nagerData;
+        }
+        
+        // 3. 降级：使用硬编码的本地数据
+        console.warn(`无法从API加载 ${country} ${year} 年节假日数据，使用本地缓存`);
+        return getLocalHolidayData(country, year);
+      })();
+
+      // 缓存加载 Promise
+      loadingDataCache.set(cacheKey, loadPromise);
+      
+      try {
+        const result = await loadPromise;
+        return result;
+      } finally {
+        // 加载完成后清除缓存（保留一段时间，避免重复请求）
+        setTimeout(() => loadingDataCache.delete(cacheKey), 5000);
+      }
+    }
+
+    // 获取本地硬编码数据（降级方案）
+    function getLocalHolidayData(country, year) {
+      const config = HOLIDAY_CONFIG[country];
+      if (!config) {
+        console.warn(`[节假日数据] ${country} 没有配置数据`);
+        return {
+          yearSpecific: {},
+          makeupWorkdays: {}
+        };
+      }
+      
+      const result = {
+        yearSpecific: config.yearSpecific[year] ? { [year]: config.yearSpecific[year] } : {},
+        makeupWorkdays: config.makeupWorkdays[year] ? { [year]: config.makeupWorkdays[year] } : {}
+      };
+      
+      // 如果本地也没有该年份数据，至少返回空对象（会使用固定节假日）
+      if (!result.yearSpecific[year] && !result.makeupWorkdays[year]) {
+        console.warn(`[节假日数据] ${country} ${year}年本地数据也不存在，将仅使用固定节假日`);
+        result.yearSpecific = {};
+        result.makeupWorkdays = {};
+      } else {
+        console.log(`[节假日数据] 使用本地硬编码数据:`, result);
+      }
+      
+      return result;
+    }
+
+    // 预加载最近3年的数据（仅预加载中国数据，其他国家按需加载）
+    async function preloadHolidayData() {
+      const currentYear = new Date().getFullYear();
+      const years = [currentYear - 1, currentYear, currentYear + 1];
+      
+      // 检查是否需要更新（每年1月1日后更新）
+      const lastUpdate = localStorage.getItem('holiday_data_last_update');
+      const currentDate = new Date();
+      const shouldUpdate = !lastUpdate || 
+        (currentDate.getFullYear() > parseInt(lastUpdate)) ||
+        (currentDate.getFullYear() === parseInt(lastUpdate) && currentDate.getMonth() === 0);
+      
+      if (!shouldUpdate) {
+        // 数据已是最新，只加载缺失的年份
+        const missingYears = years.filter(year => !getCachedHolidayData(year));
+        if (missingYears.length === 0) {
+          return; // 所有数据都已缓存
+        }
+        years.splice(0, years.length, ...missingYears);
+      }
+      
+      // 并行加载中国数据，不阻塞页面（其他国家按需加载）
+      Promise.all(years.map(year => loadHolidayDataForYear('china', year)))
+        .then(() => {
+          localStorage.setItem('holiday_data_last_update', String(currentYear));
+          console.log('节假日数据预加载完成');
+        })
+        .catch(err => {
+          console.warn('节假日数据预加载失败:', err);
+        });
+    }
+
+    function getHolidayLabelMap(country, year) {
+      const key = `${country}-${year}`;
+      if (holidayLabelCache.has(key)) {
+        return holidayLabelCache.get(key);
+      }
+      const config = HOLIDAY_CONFIG[country];
+      const map = new Map();
+      
+      // 处理固定节假日（每年相同）- 这些总是可用的
+      if (config?.recurring?.length) {
+        config.recurring.forEach(({ date, label }) => {
+          map.set(`${year}-${date}`, label);
+        });
+        console.log(`[节假日] ${year}年固定节假日已添加，数量:`, config.recurring.length);
+      }
+      
+      // 处理特定年份的节假日（硬编码）
+      if (config?.yearSpecific?.[year]?.length) {
+        config.yearSpecific[year].forEach(({ date, label }) => {
+          map.set(date, label);
+        });
+        console.log(`[节假日] ${year}年硬编码节假日已添加，数量:`, config.yearSpecific[year].length);
+      }
+      
+      // 对于中国，尝试从动态加载的数据中获取（覆盖固定节假日）
+      if (country === 'china') {
+        const dynamicData = getCachedHolidayData(year);
+        if (dynamicData?.yearSpecific?.[year]?.length > 0) {
+          console.log(`[节假日] 使用缓存的${year}年动态数据，节假日数量:`, dynamicData.yearSpecific[year].length);
+          // 先清除固定节假日中可能重复的（动态数据优先级更高）
+          dynamicData.yearSpecific[year].forEach(({ date, label }) => {
+            // 移除可能存在的固定节假日（使用完整日期格式）
+            const recurringDate = date.substring(5); // 提取 MM-DD
+            map.delete(`${year}-${recurringDate}`);
+            // 添加动态数据
+            map.set(date, label);
+          });
+        } else {
+          console.log(`[节假日] ${year}年缓存数据为空或不存在，仅使用固定节假日`);
+        }
+      } else {
+        // 对于其他国家，尝试从Nager API缓存中获取
+        const countryCode = COUNTRY_CODE_MAP[country];
+        if (countryCode) {
+          const nagerData = getCachedNagerData(countryCode, year);
+          if (nagerData?.yearSpecific?.[year]?.length > 0) {
+            console.log(`[节假日] 使用缓存的Nager API ${countryCode} ${year}年数据，节假日数量:`, nagerData.yearSpecific[year].length);
+            // 先清除固定节假日中可能重复的（API数据优先级更高）
+            nagerData.yearSpecific[year].forEach(({ date, label }) => {
+              // 移除可能存在的固定节假日（使用完整日期格式）
+              const recurringDate = date.substring(5); // 提取 MM-DD
+              map.delete(`${year}-${recurringDate}`);
+              // 添加API数据
+              map.set(date, label);
+            });
+          }
+        }
+      }
+      
+      console.log(`[节假日] ${year}年最终节假日总数:`, map.size);
+      holidayLabelCache.set(key, map);
+      return map;
+    }
+
+    function updateCurrencyDisplay() {
+      if (!currencyDisplay) return;
+      const country = countrySelect?.value || 'china';
+      currencyDisplay.value = countryCurrency(country);
+    }
+
+  // 按语言设置默认国家，优先使用文档 lang，其次 navigator.languages / language
+  function resolveDefaultCountryByLanguage() {
+    const supported = new Set(Array.from(countrySelect?.options || []).map(opt => opt.value));
+    const candidates = [];
+    const docLang = document.documentElement?.lang;
+    if (docLang) candidates.push(docLang);
+    if (Array.isArray(navigator.languages)) candidates.push(...navigator.languages);
+    if (navigator.language) candidates.push(navigator.language);
+
+    for (const lang of candidates) {
+      if (!lang) continue;
+      const lower = String(lang).toLowerCase();
+      const exact = LANGUAGE_DEFAULT_COUNTRY_MAP[lower];
+      if (exact && supported.has(exact)) return exact;
+      const base = lower.split('-')[0];
+      const baseMatch = LANGUAGE_DEFAULT_COUNTRY_MAP[base];
+      if (baseMatch && supported.has(baseMatch)) return baseMatch;
+    }
+
+    // 默认回落到中国或第一个可选项
+    if (supported.has('china')) return 'china';
+    return countrySelect?.options?.[0]?.value || 'china';
+  }
+
+  function applyLanguageDefaultCountry() {
+    if (!countrySelect) return;
+    const resolved = resolveDefaultCountryByLanguage();
+    if (resolved && countrySelect.value !== resolved) {
+      countrySelect.value = resolved;
+    }
+    updateCurrencyDisplay();
+  }
+
+    function getMakeupLabelMap(country, year) {
+      const key = `${country}-${year}`;
+      if (makeupLabelCache.has(key)) {
+        return makeupLabelCache.get(key);
+      }
+      const config = HOLIDAY_CONFIG[country];
+      const map = new Map();
+      
+      // 处理硬编码的调休数据
+      if (config?.makeupWorkdays?.[year]?.length) {
+        config.makeupWorkdays[year].forEach(({ date, label }) => {
+          map.set(date, label);
+        });
+      }
+      
+      // 对于中国，尝试从动态加载的数据中获取
+      if (country === 'china') {
+        const dynamicData = getCachedHolidayData(year);
+        if (dynamicData?.makeupWorkdays?.[year]?.length > 0) {
+          console.log(`[调休] 使用缓存的${year}年数据，调休数量:`, dynamicData.makeupWorkdays[year].length);
+          dynamicData.makeupWorkdays[year].forEach(({ date, label }) => {
+            map.set(date, label);
+          });
+        } else {
+          console.log(`[调休] ${year}年缓存数据为空或不存在`);
+        }
+      }
+      
+      makeupLabelCache.set(key, map);
+      return map;
+    }
+
+    const HOURS_PER_DAY = 8;
+    const WORKDAYS_PER_MONTH = 22;
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    const DATE_RANGE = (() => {
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      // 限制为去年、今年、明年
+      const min = new Date(currentYear - 1, 0, 1);
+      const max = new Date(currentYear + 1, 11, 31);
+      return { min, max };
+    })();
+
+    // 获取所有日期输入框的约束值
+    function getDateConstraints() {
+      const min = toInputDate(DATE_RANGE.min);
+      const max = toInputDate(DATE_RANGE.max);
+      return { min, max };
+    }
+
+    const form = document.getElementById('income-form');
+    const results = document.getElementById('results');
+    const rateTypeSelect = document.getElementById('rateType');
+    const rateAmountInput = document.getElementById('rateAmount');
+    const currencyDisplay = document.getElementById('currencyDisplay');
+    const countrySelect = form.querySelector('select[name="country"]');
+    const timeRangeSelect = document.getElementById('timeRange');
+    const leaveToggle = document.getElementById('leaveToggle');
+    const leaveRangesWrapper = document.getElementById('leaveRanges');
+    const leaveRangesList = document.getElementById('leaveRangesList');
+    const addLeaveRangeBtn = document.getElementById('addLeaveRange');
+    const leaveHint = leaveRangesWrapper?.querySelector('.range-hint');
+    const leaveTotalContainer = document.getElementById('leaveTotalContainer');
+    const leaveTotalInput = document.getElementById('leaveTotal');
+    const overtimeToggle = document.getElementById('overtimeToggle');
+    const overtimeRangesWrapper = document.getElementById('overtimeRanges');
+    const overtimeRangesList = document.getElementById('overtimeRangesList');
+    const addOvertimeRangeBtn = document.getElementById('addOvertimeRange');
+    const overtimeHint = overtimeRangesWrapper?.querySelector('.range-hint');
+    const overtimeTotalContainer = document.getElementById('overtimeTotalContainer');
+    const overtimeTotalInput = document.getElementById('overtimeTotal');
+    const exportButton = document.getElementById('exportResults');
+    const calculateButton = document.getElementById('calculateButton');
+    const themeToggle = document.getElementById('themeToggle');
+
+    let lastResultSnapshot = null;
+
+    // Theme Toggle Functionality
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+      updateThemeIcon(theme);
+    }
+
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      updateThemeIcon(newTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      if (!themeToggle) return;
+      const svg = themeToggle.querySelector('svg');
+      if (theme === 'dark') {
+        // Moon icon for dark mode
+        svg.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+      } else {
+        // Sun icon for light mode
+        svg.innerHTML = '<path d="M12 2.25a.75.75 0 01.75.75v2.25a.75.75 0 01-1.5 0V3a.75.75 0 01.75-.75zM7.5 12a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM18.894 6.166a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 101.06 1.061l1.591-1.59zM21.75 12a.75.75 0 01-.75.75h-2.25a.75.75 0 010-1.5H21a.75.75 0 01.75.75zM17.834 18.894a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 10-1.061 1.06l1.59 1.591zM12 18a.75.75 0 01.75.75V21a.75.75 0 01-1.5 0v-2.25A.75.75 0 0112 18zM7.758 17.834a.75.75 0 00-1.06-1.06l-1.591 1.59a.75.75 0 001.06 1.061l1.591-1.59zM6 12a.75.75 0 01-.75.75H3a.75.75 0 010-1.5h2.25A.75.75 0 016 12zM6.166 7.758a.75.75 0 001.06-1.06l-1.59-1.591a.75.75 0 00-1.061 1.06l1.59 1.591z"/>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme);
+      }
+      // 应用日期约束
+      applyDateConstraints();
+      // 预加载节假日数据（后台进行，不阻塞页面）
+      preloadHolidayData();
+      setDefaultDateRange();
+      
+      // 时间区间选择器事件监听
+      if (timeRangeSelect) {
+        timeRangeSelect.addEventListener('change', (e) => {
+          const selectedRange = e.target.value;
+          setDateRangeByTimeRange(selectedRange);
+          // 如果选择"其他"，不自动设置日期，让用户自由选择
+          if (selectedRange === 'custom') {
+            // 不执行任何操作，保持当前日期或让用户手动设置
+          }
+        });
+      }
+      
+      // 当用户手动修改日期时，如果时间区间不是"其他"，自动切换为"其他"
+      const startInput = form.querySelector('input[name="startDate"]');
+      const endInput = form.querySelector('input[name="endDate"]');
+      if (startInput && endInput) {
+        const handleDateChange = () => {
+          if (timeRangeSelect && timeRangeSelect.value !== 'custom') {
+            timeRangeSelect.value = 'custom';
+          }
+        };
+        startInput.addEventListener('change', handleDateChange);
+        endInput.addEventListener('change', handleDateChange);
+      }
+      setupRangeSection({
+        toggle: leaveToggle,
+        wrapper: leaveRangesWrapper,
+        list: leaveRangesList,
+        addBtn: addLeaveRangeBtn,
+        hint: leaveHint,
+        totalContainer: leaveTotalContainer,
+        allowHalfDay: true,
+        startLabel: '请假开始日期',
+        endLabel: '请假结束日期',
+        onChange: () => calculateLeaveData(),
+        type: 'leave'
+      });
+      setupRangeSection({
+        toggle: overtimeToggle,
+        wrapper: overtimeRangesWrapper,
+        list: overtimeRangesList,
+        addBtn: addOvertimeRangeBtn,
+        hint: overtimeHint,
+        totalContainer: overtimeTotalContainer,
+        allowHalfDay: false,
+        startLabel: '加班开始日期',
+        endLabel: '加班结束日期',
+        type: 'overtime'
+      });
+      calculateLeaveData();
+      applyLanguageDefaultCountry();
+      countrySelect?.addEventListener('change', updateCurrencyDisplay);
+      if (exportButton) {
+        exportButton.addEventListener('click', handleExport);
+      }
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      
+      // Show loading state
+      if (calculateButton) {
+        calculateButton.disabled = true;
+        calculateButton.classList.add('button-loading');
+      }
+
+      // Simulate async calculation for better UX
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const formData = new FormData(form);
+      const startDate = new Date(formData.get('startDate'));
+      const endDate = new Date(formData.get('endDate'));
+      const country = formData.get('country');
+
+      if (Number.isNaN(startDate) || Number.isNaN(endDate)) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        return renderMessage('请提供有效的日期范围。');
+      }
+      if (endDate < startDate) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        return renderMessage('结束日期必须大于等于开始日期。');
+      }
+
+      // 验证请假和加班的日期是否在计算日期范围内
+      // 只有当区间与计算日期范围完全没有重叠时才报错
+      // 只查找请假区间列表中的元素，不包括加班区间
+      const leaveRanges = Array.from(document.querySelectorAll('#leaveRangesList .leave-range'));
+      const leaveErrors = [];
+      leaveRanges.forEach((range, idx) => {
+        const leaveStartInput = range.querySelector('.leave-start');
+        const leaveEndInput = range.querySelector('.leave-end');
+        if (leaveStartInput && leaveEndInput && leaveStartInput.value && leaveEndInput.value) {
+          const leaveStart = new Date(leaveStartInput.value);
+          const leaveEnd = new Date(leaveEndInput.value);
+          // 只有当请假区间完全在计算日期范围之外时才报错
+          // 即：请假结束日期 < 计算开始日期 或 请假开始日期 > 计算结束日期
+          if (leaveEnd < startDate || leaveStart > endDate) {
+            const leaveStartFormatted = formatDisplayDate(leaveStartInput.value);
+            const leaveEndFormatted = formatDisplayDate(leaveEndInput.value);
+            const calcStartFormatted = formatDisplayDate(formData.get('startDate'));
+            const calcEndFormatted = formatDisplayDate(formData.get('endDate'));
+            leaveErrors.push(`请假区间 ${idx + 1}（${leaveStartFormatted} 至 ${leaveEndFormatted}）不在计算日期范围内（${calcStartFormatted} 至 ${calcEndFormatted}）`);
+          }
+        }
+      });
+
+      const overtimeRanges = Array.from(document.querySelectorAll('#overtimeRangesList .leave-range'));
+      const overtimeErrors = [];
+      overtimeRanges.forEach((range, idx) => {
+        const overtimeStartInput = range.querySelector('.leave-start');
+        const overtimeEndInput = range.querySelector('.leave-end');
+        if (overtimeStartInput && overtimeEndInput && overtimeStartInput.value && overtimeEndInput.value) {
+          const overtimeStart = new Date(overtimeStartInput.value);
+          const overtimeEnd = new Date(overtimeEndInput.value);
+          // 只有当加班区间完全在计算日期范围之外时才报错
+          // 即：加班结束日期 < 计算开始日期 或 加班开始日期 > 计算结束日期
+          if (overtimeEnd < startDate || overtimeStart > endDate) {
+            const overtimeStartFormatted = formatDisplayDate(overtimeStartInput.value);
+            const overtimeEndFormatted = formatDisplayDate(overtimeEndInput.value);
+            const calcStartFormatted = formatDisplayDate(formData.get('startDate'));
+            const calcEndFormatted = formatDisplayDate(formData.get('endDate'));
+            overtimeErrors.push(`加班区间 ${idx + 1}（${overtimeStartFormatted} 至 ${overtimeEndFormatted}）不在计算日期范围内（${calcStartFormatted} 至 ${calcEndFormatted}）`);
+          }
+        }
+      });
+
+      if (leaveErrors.length > 0 || overtimeErrors.length > 0) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        const allErrors = [...leaveErrors, ...overtimeErrors];
+        return renderMessage('日期范围错误：<br>' + allErrors.join('<br>'));
+      }
+
+      // 确保所需年份的节假日数据已加载（优化：优先使用缓存，异步加载缺失数据）
+      {
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+        const yearsToLoad = new Set();
+        for (let y = startYear; y <= endYear; y++) {
+          yearsToLoad.add(y);
+        }
+        
+        // 检查哪些年份需要加载（没有缓存的）
+        const missingYears = [];
+        const countryCode = COUNTRY_CODE_MAP[country];
+        
+        for (const year of yearsToLoad) {
+          let hasCache = false;
+          if (country === 'china') {
+            hasCache = !!getCachedHolidayData(year);
+          } else if (countryCode) {
+            hasCache = !!getCachedNagerData(countryCode, year);
+          }
+          
+          // 如果有硬编码数据，也算有数据（不需要等待API）
+          const config = HOLIDAY_CONFIG[country];
+          if (config && (config.recurring?.length > 0 || config.yearSpecific?.[year]?.length > 0)) {
+            hasCache = true; // 有硬编码数据，可以立即计算
+          }
+          
+          if (!hasCache) {
+            missingYears.push(year);
+          }
+        }
+        
+        // 如果有缺失数据，异步加载（不阻塞计算）
+        if (missingYears.length > 0) {
+          console.log(`[节假日数据] 异步加载缺失年份:`, missingYears);
+          // 使用较短的超时（2秒），超时后使用硬编码数据
+          Promise.race([
+            Promise.all(missingYears.map(year => loadHolidayDataForYear(country, year))),
+            new Promise(resolve => setTimeout(resolve, 2000))
+          ]).then(() => {
+            // 清除缓存，让下次计算使用新数据
+            missingYears.forEach(year => {
+              holidayLabelCache.delete(`${country}-${year}`);
+              makeupLabelCache.delete(`${country}-${year}`);
+            });
+            console.log(`[节假日数据] 异步加载完成`);
+          }).catch(err => {
+            console.warn(`[节假日数据] 异步加载失败:`, err);
+          });
+        }
+      }
+
+      // 预先构建所有需要的年份的节假日和调休 Map（避免在循环中重复构建）
+      const startYear = startDate.getFullYear();
+      const endYear = endDate.getFullYear();
+      for (let y = startYear; y <= endYear; y++) {
+        getHolidayLabelMap(country, y);
+        getMakeupLabelMap(country, y);
+      }
+
+      const leaveData = calculateLeaveData();
+      const leaveDaysMap = leaveData.map;
+      const overtimeData = collectOvertimeData(overtimeToggle, overtimeRangesList);
+      const workingDayResult = countWorkingDays(
+        startDate,
+        endDate,
+        country,
+        leaveDaysMap,
+        overtimeData?.map
+      );
+      if (workingDayResult.days === 0) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        return renderMessage('所选期间无工作日，请调整日期范围。');
+      }
+
+      const hours = workingDayResult.days * HOURS_PER_DAY;
+
+      const rateSelection = getRateSelection();
+      if (!rateSelection) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        return renderMessage('请选择薪资方案并输入有效金额。');
+      }
+
+      // 计算应出勤总天数（用于月薪计算）
+      const scheduledWorkdays = countScheduledWorkdays(startDate, endDate, country);
+
+      const derivedRates = deriveRates(rateSelection);
+      
+      // 对于月薪，使用特殊公式计算总收入
+      const totalIncome = calculateTotal(
+        rateSelection.type === 'monthly' ? rateSelection.amount : derivedRates.daily,
+        workingDayResult.days,
+        rateSelection,
+        scheduledWorkdays,
+        leaveData.total,
+        overtimeData?.totalDays ?? 0
+      );
+      if (totalIncome === null) {
+        if (calculateButton) {
+          calculateButton.disabled = false;
+          calculateButton.classList.remove('button-loading');
+        }
+        return renderMessage('无法计算收入，请检查薪资金额。');
+      }
+
+      const calculation = {
+        workdays: workingDayResult.days,
+        hours,
+        totalIncome,
+        dailyRate: derivedRates.daily,
+        includedDays: workingDayResult.included,
+        excludedDays: workingDayResult.excluded,
+        leaveTotal: leaveData.total,
+        overtimeDays: overtimeData?.totalDays ?? 0,
+        scheduledWorkdays: scheduledWorkdays
+      };
+
+      renderResults(calculation, country, startDate, endDate, rateSelection);
+      
+      // Remove loading state
+      if (calculateButton) {
+        calculateButton.disabled = false;
+        calculateButton.classList.remove('button-loading');
+      }
+    });
+
+    function getWorkdayStatus(date, country) {
+      const iso = toInputDate(date);
+      const year = date.getFullYear();
+      
+      // 对于所有国家，确保数据已加载（同步检查，异步触发）
+      const cacheKey = `${country}-${year}`;
+      if (country === 'china') {
+        const cached = getCachedHolidayData(year);
+        if (!cached && !loadingDataCache.has(cacheKey)) {
+          // 触发后台加载
+          loadHolidayDataForYear(country, year);
+        }
+      } else {
+        const countryCode = COUNTRY_CODE_MAP[country];
+        if (countryCode) {
+          const cached = getCachedNagerData(countryCode, year);
+          if (!cached && !loadingDataCache.has(cacheKey)) {
+            // 触发后台加载
+            loadHolidayDataForYear(country, year);
+          }
+        }
+      }
+      
+      const makeupMap = getMakeupLabelMap(country, year);
+      if (makeupMap.has(iso)) {
+        return { isWorkday: true, override: makeupMap.get(iso), type: 'makeup' };
+      }
+      const holidayMap = getHolidayLabelMap(country, year);
+      if (holidayMap.has(iso)) {
+        return { isWorkday: false, reason: `法定节假日：${holidayMap.get(iso)}`, type: 'holiday' };
+      }
+      const day = date.getDay();
+      if (day === 0 || day === 6) {
+        return { isWorkday: false, reason: '周末', type: 'weekend' };
+      }
+      return { isWorkday: true, type: 'workday' };
+    }
+
+    function countWorkingDays(start, end, country, leaveDaysMap, overtimeMap) {
+      let days = 0;
+      const excluded = [];
+      const included = [];
+      for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+        const cloned = new Date(dt);
+        const iso = toInputDate(cloned);
+        const status = getWorkdayStatus(cloned, country);
+        const overtimeWeight = overtimeMap?.get(iso) ?? 0;
+        const hasOvertime = overtimeWeight > 0;
+        if (!status.isWorkday && !hasOvertime) {
+          excluded.push({ date: iso, reason: status.reason || '非工作日', type: status.type || 'nonwork' });
+          continue;
+        }
+        let dayWeight = hasOvertime ? overtimeWeight : 1;
+        if (dayWeight <= 0) {
+          excluded.push({ date: iso, reason: '加班时长为 0，未计入', type: 'overtime' });
+          continue;
+        }
+        const leaveWeightRaw = leaveDaysMap?.get(iso) ?? 0;
+        const leaveWeight = Math.max(Math.min(leaveWeightRaw, dayWeight), 0);
+        if (leaveWeight >= dayWeight) {
+          excluded.push({ date: iso, reason: `请假 ${formatDayCount(leaveWeight)} 天`, type: 'leave' });
+          continue;
+        }
+        if (leaveWeight > 0) {
+          excluded.push({ date: iso, reason: `请假 ${formatDayCount(leaveWeight)} 天（部分扣减）`, type: 'leave_partial' });
+          dayWeight -= leaveWeight;
+        }
+        days += dayWeight;
+        const reason = hasOvertime
+          ? (status.reason ? `加班（原为${status.reason}）` : '加班（日常安排）')
+          : (status.override || '正常工作日');
+        included.push({
+          date: iso,
+          reason,
+          weight: dayWeight,
+          type: hasOvertime ? 'overtime' : (status.type || 'workday')
+        });
+      }
+      return { days, excluded, included };
+    }
+
+    function handleExport() {
+      if (!lastResultSnapshot) return;
+      const payload = buildExportPayload(lastResultSnapshot);
+      const workbook = buildExportWorkbook(payload);
+      const blob = new Blob(['\ufeff' + workbook], {
+        type: 'application/vnd.ms-excel'
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const startLabel = new Date(payload.start).toISOString().slice(0, 10);
+      const endLabel = new Date(payload.end).toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `自由职业收入-${startLabel}_至_${endLabel}.xls`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function buildExportPayload(payload) {
+      const workContentInputs = Array.from(document.querySelectorAll('.details-table input[aria-label="工作内容"]'));
+      const excludedNoteInputs = Array.from(document.querySelectorAll('.details-table input[aria-label="备注"]'));
+      const includedNotes = workContentInputs.map((input) => input.value.trim() || '努力工作的一天');
+      const excludedNotes = excludedNoteInputs.map((input, idx) => input.value.trim() || payload.data.excludedDays?.[idx]?.reason || '');
+      const includedRows = (payload.data.includedDays || []).map((item, index) => ({
+        ...item,
+        note: includedNotes[index] || '努力工作的一天'
+      }));
+      const excludedRows = (payload.data.excludedDays || []).map((item, index) => ({
+        ...item,
+        note: excludedNotes[index] || item.reason
+      }));
+      return {
+        ...payload,
+        data: {
+          ...payload.data,
+          includedDays: includedRows,
+          excludedDays: excludedRows
+        }
+      };
+      }
+
+    function buildExportWorkbook(payload) {
+      const { data, country, start, end, rateSelection } = payload;
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      const summaryRows = [
+        ['国家/地区', countryLabel(country)],
+        ['币种', countryCurrency(country)],
+        ['期间', `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`],
+        ['工作日', formatDayCount(data.workdays)],
+        ['总工时', formatDayCount(data.hours)],
+        ['总收入', formatCurrency(data.totalIncome)],
+        ['薪资方案', describeSelection(rateSelection)]
+      ];
+      const paydaysRows = (data.includedDays || []).map((item, idx) => [
+        idx + 1,
+        item.date,
+        formatDayCount(item.weight || 1),
+        item.reason,
+        item.note || '努力工作的一天'
+      ]);
+      const excludedRows = (data.excludedDays || []).map((item, idx) => [
+        idx + 1,
+        item.date,
+        item.reason,
+        item.note || item.reason
+      ]);
+      let html = '<html><head><meta charset="UTF-8"></head><body>';
+      html += '<table border="1">';
+      summaryRows.forEach((row) => {
+        html += '<tr>' + row.map((cell) => `<th>${escapeHtml(cell)}</th>`).join('') + '</tr>';
+      });
+      html += '</table><br />';
+      html += '<table border="1"><thead><tr><th>序号</th><th>日期</th><th>计薪天数</th><th>计薪说明</th><th>工作内容</th></tr></thead><tbody>';
+      if (paydaysRows.length) {
+        paydaysRows.forEach((row) => {
+          html += '<tr>' + row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>';
+        });
+      } else {
+        html += '<tr><td colspan="5">无计薪日</td></tr>';
+      }
+      html += '</tbody></table><br />';
+      html += '<table border="1"><thead><tr><th>序号</th><th>日期</th><th>排除原因</th><th>备注</th></tr></thead><tbody>';
+      if (excludedRows.length) {
+        excludedRows.forEach((row) => {
+          html += '<tr>' + row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>';
+        });
+      } else {
+        html += '<tr><td colspan="4">无被排除的日期</td></tr>';
+      }
+      html += '</tbody></table>';
+      html += '</body></html>';
+      return html;
+    }
+
+    function escapeHtml(value) {
+      if (value === null || value === undefined) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatCurrency(value) {
+      const formatter = new Intl.NumberFormat('zh-CN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+      return formatter.format(value ?? 0);
+    }
+
+    function countryLabel(code) {
+      return { china: '中国', us: '美国', eu: '欧洲' }[code] || code;
+    }
+
+    function countryCurrency(code) {
+      return CURRENCY_MAP[code] || code?.toUpperCase() || '---';
+    }
+
+    function applyDateConstraints() {
+      const { min, max } = getDateConstraints();
+      
+      // 应用到主日期输入框
+      const startInput = form.querySelector('input[name="startDate"]');
+      const endInput = form.querySelector('input[name="endDate"]');
+      [startInput, endInput].forEach((input) => {
+        if (input) {
+        input.min = min;
+        input.max = max;
+          // 如果当前值超出范围，清空
+          if (input.value && (input.value < min || input.value > max)) {
+            input.value = '';
+    }
+        }
+      });
+      
+      // 应用到所有动态添加的日期输入框（请假和加班）
+      const allDateInputs = form.querySelectorAll('input[type="date"]');
+      allDateInputs.forEach((input) => {
+        input.min = min;
+        input.max = max;
+        // 如果当前值超出范围，清空
+        if (input.value && (input.value < min || input.value > max)) {
+          input.value = '';
+        }
+        // 添加输入验证，防止用户输入无效日期
+        input.addEventListener('change', function() {
+          if (this.value && (this.value < min || this.value > max)) {
+            alert(`日期必须在 ${formatDisplayDate(min)} 至 ${formatDisplayDate(max)} 之间`);
+            this.value = '';
+          }
+        });
+      });
+    }
+
+    // 根据时间区间选择设置日期范围
+    function setDateRangeByTimeRange(timeRange) {
+      const startInput = form.querySelector('input[name="startDate"]');
+      const endInput = form.querySelector('input[name="endDate"]');
+      if (!startInput || !endInput) return;
+      
+      const now = new Date();
+      let startDate, endDate;
+      
+      switch (timeRange) {
+        case 'lastMonth':
+          // 上月：上个月的第一天到最后一天
+          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+          break;
+        case 'currentMonth':
+          // 当月：当月的第一天到最后一天
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          break;
+        case 'nextMonth':
+          // 下月：下个月的第一天到最后一天
+          startDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+          endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+          break;
+        case 'custom':
+          // 其他：不自动设置，让用户自由选择
+          return;
+        default:
+          // 默认使用上月
+          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+      }
+      
+      startInput.value = toInputDate(startDate);
+      endInput.value = toInputDate(endDate);
+    }
+
+    function setDefaultDateRange() {
+      // 设置默认时间区间为"上月"
+      if (timeRangeSelect) {
+        timeRangeSelect.value = 'lastMonth';
+      }
+      setDateRangeByTimeRange('lastMonth');
+      if (rateTypeSelect) {
+        rateTypeSelect.value = 'daily';
+      }
+    }
+
+    function getLastMonthStartDate() {
+      const now = new Date();
+      return toInputDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+      }
+
+    function getRateSelection() {
+      const type = rateTypeSelect?.value;
+      const amount = Number(rateAmountInput?.value);
+      if (!type || !Number.isFinite(amount) || amount <= 0) {
+        return null;
+      }
+      return { type, amount };
+    }
+
+    function deriveRates(selection) {
+      if (!selection) return { daily: null, hourly: null, monthly: null };
+      let dailyRate = null;
+      switch (selection.type) {
+        case 'monthly':
+          dailyRate = selection.amount / WORKDAYS_PER_MONTH;
+          break;
+        case 'daily':
+          dailyRate = selection.amount;
+          break;
+        case 'hourly':
+          dailyRate = selection.amount * HOURS_PER_DAY;
+          break;
+        default:
+          dailyRate = null;
+      }
+      if (!dailyRate || dailyRate <= 0) {
+        return { daily: null, hourly: null, monthly: null };
+      }
+      return {
+        daily: dailyRate,
+        hourly: dailyRate / HOURS_PER_DAY,
+        monthly: dailyRate * WORKDAYS_PER_MONTH
+      };
+    }
+
+    function toInputDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 格式化日期显示（与 toLocaleDateString 保持一致）
+    function formatDisplayDate(dateString) {
+      // dateString 格式: "2026-01-01"
+      const [year, month, day] = dateString.split('-');
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      return date.toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric'
+      });
+    }
+
+    // 计算应出勤总天数（计算日期范围内的总工作日数，不包括节假日和周末，但不考虑请假和加班）
+    function countScheduledWorkdays(start, end, country) {
+      let days = 0;
+      for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+        const cloned = new Date(dt);
+        const status = getWorkdayStatus(cloned, country);
+        if (status.isWorkday) {
+          days += 1;
+        }
+      }
+      return days;
+    }
+
+    function calculateTotal(rate, quantity, rateSelection, scheduledWorkdays, leaveTotal, overtimeDays) {
+      const numeric = typeof rate === 'number' ? rate : Number(rate);
+      if (!rate || Number.isNaN(numeric) || numeric <= 0) {
+        return null;
+      }
+      
+      // 对于月薪，使用特殊公式：总收入 = (应出勤总天数 - 请假天数 + 加班天数) * (月薪 / 应出勤总天数)
+      if (rateSelection?.type === 'monthly' && scheduledWorkdays > 0) {
+        const effectiveDays = scheduledWorkdays - leaveTotal + overtimeDays;
+        const dailyRate = numeric / scheduledWorkdays;
+        return effectiveDays * dailyRate;
+      }
+      
+      // 对于日薪和时薪，使用原有逻辑
+      return numeric * quantity;
+    }
+
+    function renderMessage(message) {
+      results.innerHTML = `
+        <h2>提示</h2>
+        <p>${message}</p>
+      `;
+    }
+
+    function renderResults(data, country, start, end, rateSelection) {
+      const formatter = new Intl.NumberFormat('zh-CN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+      const countryMap = { china: '中国', us: '美国', eu: '欧洲' };
+      
+      // 根据薪资类型显示不同的公式
+      // 统一使用格式：(应出勤总天数 - 请假天数 + 加班天数) × 日薪 = 总收入
+      let formula = '';
+      if (data.scheduledWorkdays > 0) {
+        const effectiveDays = data.scheduledWorkdays - data.leaveTotal + data.overtimeDays;
+        let dailyRate = data.dailyRate;
+        // 对于月薪，日薪需要重新计算：月薪 / 应出勤总天数
+        if (rateSelection.type === 'monthly') {
+          dailyRate = rateSelection.amount / data.scheduledWorkdays;
+        }
+        formula = `(${formatDayCount(data.scheduledWorkdays)}天 - ${formatDayCount(data.leaveTotal)}天 + ${formatDayCount(data.overtimeDays)}天) × ${formatter.format(dailyRate)} = ${formatter.format(data.totalIncome)}`;
+      } else {
+        // 如果应出勤总天数为0，使用备用显示方式
+        formula = `${formatDayCount(data.workdays)}天 × ${formatter.format(data.dailyRate)} = ${formatter.format(data.totalIncome)}`;
+      }
+      const paydaysContent = data.includedDays?.length
+        ? `
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th>序号</th>
+                <th>日期</th>
+                <th>计薪说明</th>
+                <th>工作内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.includedDays.map((item, idx) => {
+                const className = item.type === 'workday' ? '' : 'text-danger';
+                const detail = `计薪 ${formatDayCount(item.weight || 1)} 天 · ${item.reason}`;
+                // 格式化日期显示，与其他地方保持一致
+                const formattedDate = formatDisplayDate(item.date);
+                return `
+                  <tr class="${className}">
+                    <td>${idx + 1}</td>
+                    <td>${formattedDate}</td>
+                    <td>${detail}</td>
+                    <td><input type="text" value="努力工作的一天" aria-label="工作内容"></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `
+        : '<p>本周期内无计薪日。</p>';
+      const excludedContent = data.excludedDays?.length
+        ? `
+          <table class="details-table">
+            <thead>
+              <tr>
+                <th>序号</th>
+                <th>日期</th>
+                <th>排除原因</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.excludedDays.map((item, idx) => {
+                const className = item.type !== 'weekend' ? 'text-danger' : '';
+                // 格式化日期显示，与其他地方保持一致
+                const formattedDate = formatDisplayDate(item.date);
+                return `
+                  <tr class="${className}">
+                    <td>${idx + 1}</td>
+                    <td>${formattedDate}</td>
+                    <td>${item.reason}</td>
+                    <td><input type="text" value="${item.reason}" aria-label="备注"></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `
+        : '<p>本周期内无被排除的日期。</p>';
+      results.innerHTML = `
+        <h2>${countryMap[country]} · ${start.toLocaleDateString()} 至 ${end.toLocaleDateString()}</h2>
+        <p>共计 <strong>${formatDayCount(data.workdays)}</strong> 个工作日 / <strong>${formatDayCount(data.hours)}</strong> 个工作小时（按 ${HOURS_PER_DAY} 小时/天估算）</p>
+        <div class="grid">
+          ${createCard('总收入', `总收入：${formula}<br />币种：${countryCurrency(country)}`)}
+        </div>
+        <p>总请假天数：<strong>${formatDayCount(data.leaveTotal)}</strong> 天 · 总加班天数：<strong>${formatDayCount(data.overtimeDays)}</strong> 天</p>
+        <section class="details-section">
+          <h3>计薪日与原因</h3>
+          ${paydaysContent}
+        </section>
+        <section class="details-section">
+          <h3>被排除的日期</h3>
+          ${excludedContent}
+        </section>
+        <p class="note">基础薪资：${describeSelection(rateSelection)}。${rateSelection.type === 'monthly' ? `月薪计算：总收入 = (应出勤总天数 - 请假天数 + 加班天数) × (月薪 ÷ 应出勤总天数)。应出勤总天数：${formatDayCount(data.scheduledWorkdays)} 天。` : `总收入 = 工作日 × 折算日薪；折算规则：日薪=输入金额，时薪=输入 × ${HOURS_PER_DAY} 小时，月薪=输入 ÷ ${WORKDAYS_PER_MONTH} 工作日。`}</p>
+      `;
+      lastResultSnapshot = {
+        data,
+        country,
+        start,
+        end,
+        rateSelection
+      };
+      if (exportButton) {
+        exportButton.disabled = false;
+      }
+    }
+
+    function createCard(title, value) {
+      return `
+        <div class="card">
+          <h3>${title}</h3>
+          <p>${value}</p>
+        </div>
+      `;
+    }
+
+    function setupRangeSection(section) {
+      const { toggle, wrapper, list, addBtn } = section;
+      if (!toggle || !wrapper || !list || !addBtn) return;
+      toggle.addEventListener('change', () => handleRangeToggle(section));
+      addBtn.addEventListener('click', () => addRangeRow(section));
+      handleRangeToggle(section);
+    }
+
+    function handleRangeToggle(section) {
+      const { toggle, wrapper, list, addBtn, hint, totalContainer, onChange } = section;
+      if (!toggle || !wrapper) return;
+      const enabled = toggle.value === 'yes';
+      wrapper.hidden = !enabled;
+      if (addBtn) addBtn.hidden = !enabled;
+      if (hint) hint.hidden = !enabled;
+      if (totalContainer) {
+        totalContainer.hidden = !enabled;
+        totalContainer.classList.toggle('visible', enabled);
+      }
+      if (enabled && !list.children.length) {
+        addRangeRow(section);
+      }
+      if (!enabled) {
+        list.innerHTML = '';
+      }
+      onChange?.();
+    }
+
+    function addRangeRow(section) {
+      const { list, startLabel, endLabel, allowHalfDay, onChange, type } = section;
+      if (!list) return;
+      const range = document.createElement('div');
+      range.className = 'leave-range';
+      const isOvertime = type === 'overtime';
+      const halfDayControls = allowHalfDay
+        ? `
+            <label>
+              请假时段
+              <select class="leave-portion">
+                <option value="full">全天</option>
+                <option value="half_pm">半天（下午）</option>
+                <option value="half_am">半天（上午）</option>
+              </select>
+            </label>
+          `
+        : '';
+      const overtimeControls = isOvertime
+        ? `
+            <label>
+              加班时长（小时）
+              <input type="number" class="overtime-hours" min="0" step="0.5" inputmode="decimal">
+            </label>
+            <small class="hours-hint">请选择开始和结束日期以自动计算，最多每天 24 小时</small>
+          `
+        : '';
+      range.innerHTML = `
+        <label>
+          ${startLabel}
+          <input type="date" class="leave-start">
+        </label>
+        <label>
+          ${endLabel}
+          <input type="date" class="leave-end">
+        </label>
+        ${halfDayControls}
+        ${overtimeControls}
+        <button type="button" class="remove-leave-range" aria-label="删除区间">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;vertical-align:middle;margin-right:0.25rem;">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
+          </svg>
+          删除
+        </button>
+      `;
+      const removeBtn = range.querySelector('.remove-leave-range');
+      removeBtn.addEventListener('click', () => {
+        range.remove();
+        if (!list.children.length && section.toggle?.value === 'yes') {
+          addRangeRow(section);
+          return;
+        }
+        onChange?.();
+      });
+      list.appendChild(range);
+      const startInput = range.querySelector('.leave-start');
+      const endInput = range.querySelector('.leave-end');
+      
+      // 应用日期约束
+      const { min, max } = getDateConstraints();
+      if (startInput) {
+        startInput.min = min;
+        startInput.max = max;
+      }
+      if (endInput) {
+        endInput.min = min;
+        endInput.max = max;
+      }
+      
+      const defaultDate = getLastMonthStartDate();
+      if (startInput && !startInput.value) {
+        startInput.value = defaultDate;
+      }
+      if (endInput && !endInput.value) {
+        endInput.value = defaultDate;
+      }
+      const controls = range.querySelectorAll('input, select');
+      controls.forEach((control) => {
+        control.addEventListener('change', () => {
+          if (
+            isOvertime &&
+            (control.classList.contains('leave-start') || control.classList.contains('leave-end'))
+          ) {
+            const hoursInput = range.querySelector('.overtime-hours');
+            if (hoursInput) {
+              hoursInput.dataset.userEdited = 'false';
+              updateOvertimeHours(range, true);
+            }
+          }
+          onChange?.();
+        });
+      });
+      if (isOvertime) {
+        const hoursInput = range.querySelector('.overtime-hours');
+        if (hoursInput) {
+          hoursInput.dataset.userEdited = 'false';
+          hoursInput.addEventListener('input', () => {
+            hoursInput.dataset.userEdited = 'true';
+            enforceOvertimeHours(hoursInput);
+            onChange?.();
+          });
+          hoursInput.addEventListener('blur', () => {
+            enforceOvertimeHours(hoursInput);
+          });
+        }
+        updateOvertimeHours(range, true);
+      }
+      onChange?.();
+    }
+
+    function collectOvertimeData(toggle, list) {
+      if (!toggle || toggle.value !== 'yes') {
+        updateOvertimeTotalDisplay(0, false);
+        return null;
+      }
+      const ranges = list?.querySelectorAll('.leave-range');
+      if (!ranges?.length) {
+        updateOvertimeTotalDisplay(0, true);
+        return null;
+      }
+      const overtimeMap = new Map();
+      let totalDays = 0;
+      ranges.forEach((range) => {
+        const start = range.querySelector('.leave-start')?.value;
+        const end = range.querySelector('.leave-end')?.value;
+        if (!start || !end) return;
+        const dates = enumerateDateRange(start, end);
+        if (!dates.length) return;
+        const hoursInput = range.querySelector('.overtime-hours');
+        const defaultHours = dates.length * HOURS_PER_DAY;
+        const maxHours = dates.length * 24;
+        let hoursValue = Number(hoursInput?.value);
+        if (!Number.isFinite(hoursValue) || hoursValue < 0) {
+          hoursValue = defaultHours;
+        }
+        hoursValue = Math.min(hoursValue, maxHours);
+        const totalDayWeight = dates.length ? hoursValue / HOURS_PER_DAY : 0;
+        const perDayWeight = dates.length ? totalDayWeight / dates.length : 0;
+        if (perDayWeight <= 0) {
+          return;
+        }
+        dates.forEach((iso) => {
+          const current = overtimeMap.get(iso) ?? 0;
+          overtimeMap.set(iso, current + perDayWeight);
+        });
+        totalDays += totalDayWeight;
+      });
+      if (totalDays > 0) {
+        updateOvertimeTotalDisplay(totalDays, true);
+      } else {
+        updateOvertimeTotalDisplay(0, true);
+        }
+      return overtimeMap.size ? { map: overtimeMap, totalDays } : null;
+    }
+
+    function updateOvertimeHours(range, forceDefault = false) {
+      const hoursInput = range.querySelector('.overtime-hours');
+      const hint = range.querySelector('.hours-hint');
+      if (!hoursInput) return;
+      const startValue = range.querySelector('.leave-start')?.value;
+      const endValue = range.querySelector('.leave-end')?.value;
+      if (!startValue || !endValue) {
+        hoursInput.value = '';
+        hoursInput.disabled = true;
+        if (hint) {
+          hint.textContent = '';
+    }
+        return;
+      }
+      const startDate = new Date(startValue);
+      const endDate = new Date(endValue);
+      if (Number.isNaN(startDate) || Number.isNaN(endDate) || endDate < startDate) {
+        hoursInput.value = '';
+        hoursInput.disabled = true;
+        if (hint) {
+          hint.textContent = '';
+        }
+        return;
+      }
+      hoursInput.disabled = false;
+      const days = Math.floor((endDate.getTime() - startDate.getTime()) / MS_PER_DAY) + 1;
+      const defaultHours = days * HOURS_PER_DAY;
+      const maxHours = days * 24;
+      hoursInput.min = 0;
+      hoursInput.max = maxHours;
+      let current = Number(hoursInput.value);
+      const userEdited = hoursInput.dataset.userEdited === 'true';
+      if (!userEdited || forceDefault || Number.isNaN(current)) {
+        current = defaultHours;
+      }
+      current = Math.min(Math.max(current, 0), maxHours);
+      hoursInput.value = current;
+      hoursInput.dataset.defaultValue = String(defaultHours);
+      hoursInput.dataset.maxValue = String(maxHours);
+      if (hint) {
+        hint.textContent = '';
+      }
+    }
+
+    function updateOvertimeTotalDisplay(total, enabled) {
+      if (!overtimeTotalContainer || !overtimeTotalInput) return;
+      overtimeTotalContainer.hidden = !enabled;
+      overtimeTotalContainer.classList.toggle('visible', enabled);
+      const value = enabled ? formatDayCount(total || 0) : '0';
+      overtimeTotalInput.value = `${value} 天`;
+    }
+
+    function enforceOvertimeHours(hoursInput) {
+      if (!hoursInput) return;
+      const max = Number(hoursInput.dataset.maxValue);
+      let value = Number(hoursInput.value);
+      if (!Number.isFinite(value) || value < 0) {
+        value = 0;
+      }
+      if (Number.isFinite(max) && value > max) {
+        value = max;
+      }
+      hoursInput.value = value;
+    }
+
+    function enumerateDateRange(startStr, endStr) {
+      const start = new Date(startStr);
+      const end = new Date(endStr);
+      if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+        return [];
+      }
+      const dates = [];
+      for (let time = start.getTime(); time <= end.getTime(); time += MS_PER_DAY) {
+        dates.push(toInputDate(new Date(time)));
+      }
+      return dates;
+    }
+
+    function calculateLeaveData() {
+      if (!leaveToggle || leaveToggle.value !== 'yes') {
+        updateLeaveTotalDisplay(0, false);
+        return { map: null, total: 0 };
+      }
+      const ranges = leaveRangesList?.querySelectorAll('.leave-range');
+      if (!ranges?.length) {
+        updateLeaveTotalDisplay(0, true);
+        return { map: null, total: 0 };
+      }
+      const leaveMap = new Map();
+      let total = 0;
+      ranges.forEach((range) => {
+        const start = range.querySelector('.leave-start')?.value;
+        const end = range.querySelector('.leave-end')?.value;
+        const portion = range.querySelector('.leave-portion')?.value || 'full';
+        if (start && end) {
+          const { startPortion, endPortion } = mapLeavePortion(portion);
+          total += addLeaveRangeToMap(start, end, startPortion, endPortion, leaveMap);
+        }
+      });
+      updateLeaveTotalDisplay(total, true);
+      return { map: leaveMap, total };
+    }
+
+    function addLeaveRangeToMap(startStr, endStr, startPortion, endPortion, targetMap) {
+      const start = new Date(startStr);
+      const end = new Date(endStr);
+      if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+        return 0;
+      }
+      let added = 0;
+      for (let dt = new Date(start); dt <= end; dt.setDate(dt.getDate() + 1)) {
+        const iso = toInputDate(dt);
+        let weight = 1;
+        if (dt.getTime() === start.getTime() && startPortion === 'half_pm') {
+          weight -= 0.5;
+        }
+        if (dt.getTime() === end.getTime() && endPortion === 'half_am') {
+          weight -= 0.5;
+        }
+        weight = Math.max(Math.min(weight, 1), 0);
+        if (weight <= 0) continue;
+        const current = targetMap.get(iso) ?? 0;
+        const remaining = Math.max(1 - current, 0);
+        const applied = Math.min(weight, remaining);
+        if (applied <= 0) continue;
+        targetMap.set(iso, current + applied);
+        added += applied;
+      }
+      return added;
+    }
+
+    function mapLeavePortion(portion) {
+      switch (portion) {
+        case 'half_pm':
+          return { startPortion: 'half_pm', endPortion: 'full' };
+        case 'half_am':
+          return { startPortion: 'full', endPortion: 'half_am' };
+        default:
+          return { startPortion: 'full', endPortion: 'full' };
+      }
+    }
+
+    function updateLeaveTotalDisplay(total, enabled) {
+      if (!leaveTotalContainer || !leaveTotalInput) return;
+      leaveTotalContainer.hidden = !enabled;
+      leaveTotalContainer.classList.toggle('visible', enabled);
+      const value = enabled ? formatDayCount(total || 0) : '0';
+      leaveTotalInput.value = `${value} 天`;
+    }
+
+    function formatDayCount(value) {
+      if (typeof value !== 'number' || Number.isNaN(value)) return '0';
+      const rounded = Math.round(value * 100) / 100;
+      if (Number.isInteger(rounded)) return rounded.toString();
+      return rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    }
+
+    function describeSelection(selection) {
+      if (!selection) return '未提供';
+      const map = {
+        monthly: '月薪',
+        daily: '日薪',
+        hourly: '时薪'
+      };
+      const label = map[selection.type] || '薪资';
+      const formatter = new Intl.NumberFormat('zh-CN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+      return `${label} · ${formatter.format(selection.amount)}`;
+    }
+  </script>
+</body>
+</html>
+

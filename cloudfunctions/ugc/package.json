@@ -1,0 +1,9 @@
+{
+  "name": "ugc",
+  "version": "1.0.0",
+  "description": "UGC operations (comments/replies/reactions) with basic moderation",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.7.0"
+  }
+}

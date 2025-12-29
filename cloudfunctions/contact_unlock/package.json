@@ -1,0 +1,9 @@
+{
+  "name": "contact_unlock",
+  "version": "1.0.0",
+  "description": "Contact unlock audit and rate limit",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^2.7.0"
+  }
+}
