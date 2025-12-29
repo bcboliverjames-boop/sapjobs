@@ -40,7 +40,6 @@ function readPgEnvFromEcosystem() {
   const p = process.env.PG_ECOSYSTEM_PATH || '/opt/sapboss-api/ecosystem.config.js'
   try {
     if (!fs.existsSync(p)) return null
-    // eslint-disable-next-line import/no-dynamic-require, global-require
     const cfg = require(p)
     const env = cfg && cfg.apps && cfg.apps[0] && cfg.apps[0].env
     if (!env) return null
