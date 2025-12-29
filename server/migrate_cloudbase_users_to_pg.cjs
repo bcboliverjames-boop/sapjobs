@@ -36,6 +36,45 @@ function writeJsonAtomic(p, obj) {
   fs.renameSync(tmp, p)
 }
 
+function readPgEnvFromEcosystem() {
+  const p = process.env.PG_ECOSYSTEM_PATH || '/opt/sapboss-api/ecosystem.config.js'
+  try {
+    if (!fs.existsSync(p)) return null
+    // eslint-disable-next-line import/no-dynamic-require, global-require
+    const cfg = require(p)
+    const env = cfg && cfg.apps && cfg.apps[0] && cfg.apps[0].env
+    if (!env) return null
+
+    return {
+      PGHOST: env.PGHOST,
+      PGPORT: env.PGPORT,
+      PGUSER: env.PGUSER,
+      PGPASSWORD: env.PGPASSWORD,
+      PGDATABASE: env.PGDATABASE,
+    }
+  } catch {
+    return null
+  }
+}
+
+function ensurePgEnv() {
+  const hasAll =
+    process.env.PGHOST &&
+    process.env.PGPORT &&
+    process.env.PGUSER &&
+    process.env.PGPASSWORD &&
+    process.env.PGDATABASE
+
+  if (hasAll) return
+
+  const fallback = readPgEnvFromEcosystem()
+  if (!fallback) return
+
+  for (const [k, v] of Object.entries(fallback)) {
+    if (!process.env[k] && v) process.env[k] = String(v)
+  }
+}
+
 function toIntOrNull(v) {
   if (v === null || v === undefined) return null
   const n = Number(v)
@@ -118,6 +157,13 @@ async function main() {
   const cloudDb = cloudApp.database()
   const cmd = cloudDb.command
   const col = cloudDb.collection(collection)
+
+  ensurePgEnv()
+  mustGetEnv('PGHOST')
+  mustGetEnv('PGPORT')
+  mustGetEnv('PGUSER')
+  mustGetEnv('PGPASSWORD')
+  mustGetEnv('PGDATABASE')
 
   const pool = new Pool({
     host: process.env.PGHOST,
