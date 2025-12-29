@@ -28,6 +28,12 @@ sap-message-capture/
 .codex/
 .gemini/
 .lingma/
+.agent/
+.qwen/
+.rules/
+.augment-guidelines
+.mcp.json
+.opencode.json
 
 # Editor directories and files
 .idea
