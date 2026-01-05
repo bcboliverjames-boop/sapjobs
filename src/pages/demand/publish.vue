@@ -1,6 +1,6 @@
 <template>
   <view class="page">
-    <scroll-view class="content" scroll-y>
+    <scroll-view v-if="canView" class="content" scroll-y>
       <view class="card">
         <view class="section">
           <text class="section-title">发布 SAP 顾问需求</text>
@@ -21,6 +21,21 @@
           <text class="field-hint">建议包含：模块、城市、周期、年限、语言等关键信息</text>
           <view v-if="autoFilled" class="auto-fill-hint">
             <text class="auto-fill-text">✨ 已自动识别并填充信息，可手动修改</text>
+          </view>
+        </view>
+
+        <view class="section">
+          <text class="field-label">合作方式</text>
+          <view class="tag-chips">
+            <view
+              v-for="opt in cooperationModes"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip--active': form.cooperation_mode === opt.value }"
+              @tap="form.cooperation_mode = opt.value"
+            >
+              <text class="tag-chip-text">{{ opt.label }}</text>
+            </view>
           </view>
         </view>
 
@@ -97,6 +112,21 @@
         </view>
 
         <view class="section">
+          <text class="field-label">项目周期标签</text>
+          <view class="tag-chips">
+            <view
+              v-for="opt in projectCycles"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip--active': form.project_cycle === opt.value }"
+              @tap="form.project_cycle = opt.value"
+            >
+              <text class="tag-chip-text">{{ opt.label }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="section">
           <text class="field-label">年限要求</text>
           <input
             class="field-input"
@@ -104,6 +134,21 @@
             placeholder="例如：3-5年、5年以上等"
             :maxlength="50"
           />
+        </view>
+
+        <view class="section">
+          <text class="field-label">顾问级别</text>
+          <view class="tag-chips">
+            <view
+              v-for="opt in consultantLevels"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip--active': form.consultant_level === opt.value }"
+              @tap="form.consultant_level = opt.value"
+            >
+              <text class="tag-chip-text">{{ opt.label }}</text>
+            </view>
+          </view>
         </view>
 
         <view class="section">
@@ -119,6 +164,21 @@
                 <view v-if="form.language === lang.value" class="radio-dot"></view>
               </view>
               <text class="radio-label">{{ lang.label }}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="section">
+          <text class="field-label">时间要求</text>
+          <view class="tag-chips">
+            <view
+              v-for="opt in timeRequirements"
+              :key="opt.value"
+              class="tag-chip"
+              :class="{ 'tag-chip--active': form.time_requirement === opt.value }"
+              @tap="form.time_requirement = opt.value"
+            >
+              <text class="tag-chip-text">{{ opt.label }}</text>
             </view>
           </view>
         </view>
@@ -185,6 +245,9 @@
                   </text>
                   <text v-if="!demand.canPublish" class="cannot-publish-tag">不可发布</text>
                 </view>
+                <view v-if="demand.tagSummary" class="split-item-tags">
+                  <text class="split-item-tags-text">{{ demand.tagSummary }}</text>
+                </view>
               </view>
             </view>
           </view>
@@ -221,51 +284,166 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { app, ensureLogin } from '../../utils/cloudbase'
-import { getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
+import { ref, onMounted, computed } from 'vue'
+import { app, ensureLogin, requireNonGuest } from '../../utils/cloudbase'
+import { ensureApiToken, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
 import { getRewardPoints } from '../../utils/points-config'
 import type { SapDemandRecord } from '../../utils/sap-demands'
-import { parseDemandText, extractProviderName, splitMultiLineDemands, hasMultipleDemands } from '../../utils/demand-parser'
-import { checkSimilarDemands, calculateTextSimilarity } from '../../utils/demand-similarity'
+import { parseDemandText } from '../../utils/demand-parser'
+import { checkSimilarDemandsByPolicy } from '../../utils/demand-similarity'
+import { fetchAdminConfig, getDefaultAdminConfig } from '../../utils/admin-config'
 
 const form = ref({
   raw_text: '',
   module_codes: [] as string[],
   city: '',
-  is_remote: undefined as boolean | undefined,
+  is_remote: false,
+  cooperation_mode: '',
   duration_text: '',
+  project_cycle: '',
   years_text: '',
+  consultant_level: '',
   language: '',
+  time_requirement: '',
   provider_name: '',
 })
 
+const parsing = ref(false)
 const submitting = ref(false)
+function getApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+
+const allowLocalDevBypass = (() => {
+  if (!(import.meta as any)?.env?.DEV) return false
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      return /^(localhost|127\.0\.0\.1)$/i.test(host)
+    }
+  } catch {
+    // ignore
+  }
+  return /(localhost|127\.0\.0\.1)/i.test(String(API_BASE || ''))
+})()
+
+const canView = ref(false)
 const autoFilled = ref(false)
-const isParsing = ref(false)
 const autoRecognizing = ref(false)
-const recognizeResult = ref<null | {
+const isParsing = parsing
+
+type RecognizeResult = {
   level: 'none' | 'medium' | 'high'
   summary: string
   detail?: string
-}>(null)
+}
+
+const recognizeResult = ref<RecognizeResult | null>(null)
+
 const splitDemands = ref<Array<{
   text: string
   similarity: number
   isSameUser?: boolean
   canPublish: boolean // 是否可以发布（相似度低于阈值）
+  blockedReason?: string
+  tagSummary?: string
+  parsed?: any
 }>>([]) // 拆分后的多个需求，包含相似度信息
+
 const showSplitPreview = ref(false) // 是否显示拆分预览
 const selectedDemands = ref<Set<number>>(new Set()) // 选中的需求索引
 const checkingSimilarity = ref(false) // 是否正在检查相似度
-const similarityThreshold = 0.85 // 相似度阈值（85%）
+const adminConfig = ref(getDefaultAdminConfig())
+
+const requireNonGuestForPublish = async () => {
+  if (allowLocalDevBypass) return
+  await requireNonGuest()
+}
+
+const getPublisherProfile = async () => {
+  if (allowLocalDevBypass) {
+    try {
+      const st: any = await ensureLogin()
+      const uid = String(st && st.user && st.user.uid || '').trim()
+      const nickname = String((st && st.user && ((st.user as any).nickName || (st.user as any).nickname)) || '').trim()
+      if (uid) {
+        return {
+          uid,
+          nickname: nickname || '本地调试',
+          points: 0,
+        } as any
+      }
+    } catch {
+      // ignore
+    }
+
+    return { uid: 'dev_publisher', nickname: '本地调试', points: 0 } as any
+  }
+  return await getOrCreateUserProfile()
+}
+
+const extractProviderName = (text: string): string => {
+  const raw = String(text || '').trim()
+  if (!raw) return ''
+  const firstLine = raw.split(/\r?\n/)[0] || ''
+  const m = firstLine.match(/^(?:发布人|发布者|来源|渠道|群|联系人)[:：\s]*([^\s，,；;:：]{2,20})/)
+  if (m && m[1]) return String(m[1]).trim()
+  const m2 = firstLine.match(/^([^\s，,；;:：]{2,20})[:：]/)
+  if (m2 && m2[1]) return String(m2[1]).trim()
+  return ''
+}
+
+const splitMultiLineDemands = (text: string): string[] => {
+  const raw = String(text || '')
+  if (!raw.trim()) return []
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((x) => String(x || '').trim())
+    .filter((x) => x.length >= 8)
+
+  if (lines.length >= 2) return lines
+
+  const byPunct = raw
+    .split(/(?:\n\s*\n)+|(?:\s{2,})|(?:\d+\.|\d+、|\(\d+\)|（\d+）)/g)
+    .map((x) => String(x || '').trim())
+    .filter((x) => x.length >= 8)
+
+  return byPunct.length >= 2 ? byPunct : [String(raw).trim()]
+}
+
+const hasMultipleDemands = (text: string): boolean => {
+  const ds = splitMultiLineDemands(text)
+  return ds.length >= 2
+}
+
+const similarityThreshold = computed(() => {
+  const v = Number((adminConfig.value as any)?.similarity_threshold)
+  return Number.isFinite(v) && v > 0 ? v : 0.85
+})
 
 const availableModules = [
   { code: 'FICO', name: 'FICO' },
   { code: 'MM', name: 'MM' },
   { code: 'SD', name: 'SD' },
   { code: 'PP', name: 'PP' },
-  { code: 'WM', name: 'WM/EWM' },
+  { code: 'WM', name: 'WM' },
+  { code: 'EWM', name: 'EWM' },
   { code: 'HR', name: 'HR' },
   { code: 'SAC', name: 'SAC' },
   { code: 'BI', name: 'BI' },
@@ -278,6 +456,40 @@ const remoteModes = [
   { value: undefined, label: '不限' },
   { value: true, label: '远程' },
   { value: false, label: '现场' },
+]
+
+const cooperationModes = [
+  { value: '', label: '不限' },
+  { value: 'free', label: 'free' },
+  { value: '入职', label: '入职' },
+  { value: '甲方入职', label: '甲方入职' },
+  { value: '乙方入职', label: '乙方入职' },
+  { value: '兼职', label: '兼职' },
+]
+
+const projectCycles = [
+  { value: '', label: '不限' },
+  { value: '短期', label: '短期' },
+  { value: '中期', label: '中期' },
+  { value: '长期', label: '长期' },
+]
+
+const consultantLevels = [
+  { value: '', label: '不限' },
+  { value: '初级', label: '初级' },
+  { value: '中级', label: '中级' },
+  { value: '高级', label: '高级' },
+  { value: '专家', label: '专家' },
+  { value: '0经验', label: '0经验' },
+  { value: '1-3年', label: '1-3年' },
+  { value: '3-6年', label: '3-6年' },
+  { value: '7-10年', label: '7-10年' },
+  { value: '10年以上', label: '10年以上' },
+]
+
+const timeRequirements = [
+  { value: '', label: '不限' },
+  { value: '快速到岗', label: '快速到岗' },
 ]
 
 const languages = [
@@ -309,6 +521,8 @@ const parseAndFillForm = (text: string) => {
   isParsing.value = true
   try {
     const parsed = parseDemandText(text)
+
+    const inferred = inferExtraTags(text, parsed)
     
     // 填充模块（如果当前没有选择模块）
     if (form.value.module_codes.length === 0 && parsed.module_codes.length > 0) {
@@ -324,20 +538,36 @@ const parseAndFillForm = (text: string) => {
     if (form.value.is_remote === undefined && parsed.is_remote !== undefined) {
       form.value.is_remote = parsed.is_remote
     }
+
+    if (!form.value.cooperation_mode && inferred.cooperation_mode) {
+      form.value.cooperation_mode = inferred.cooperation_mode
+    }
     
     // 填充周期（如果当前为空）
     if (!form.value.duration_text && parsed.duration_text) {
       form.value.duration_text = parsed.duration_text
+    }
+
+    if (!form.value.project_cycle && inferred.project_cycle) {
+      form.value.project_cycle = inferred.project_cycle
     }
     
     // 填充年限（如果当前为空）
     if (!form.value.years_text && parsed.years_text) {
       form.value.years_text = parsed.years_text
     }
+
+    if (!form.value.consultant_level && inferred.consultant_level) {
+      form.value.consultant_level = inferred.consultant_level
+    }
     
     // 填充语言（如果当前为空）
     if (!form.value.language && parsed.language) {
       form.value.language = parsed.language
+    }
+
+    if (!form.value.time_requirement && inferred.time_requirement) {
+      form.value.time_requirement = inferred.time_requirement
     }
     
     // 尝试提取提供者名称
@@ -359,6 +589,122 @@ const parseAndFillForm = (text: string) => {
   } finally {
     isParsing.value = false
   }
+}
+
+const normalizeLanguageTag = (lang: string): string => {
+  const v = String(lang || '').trim()
+  if (!v) return ''
+  if (v.includes('日语') || /japanese|\bjp\b/i.test(v)) return '日语'
+  if (v.includes('英语') || /english|\ben\b/i.test(v)) return '英语'
+  return ''
+}
+
+const inferProjectCycle = (durationText: string, rawText: string): string => {
+  const dur = String(durationText || '').trim()
+  const raw = String(rawText || '').trim()
+  const s = dur || raw
+  if (!s) return ''
+
+  if (/长期|永久|持续/i.test(s)) return '长期'
+  if (/(\d+)\s*年/i.test(s)) return '长期'
+
+  const m = s.match(/(\d+)\s*个月/i)
+  if (m && m[1]) {
+    const months = Number(m[1])
+    if (Number.isFinite(months)) {
+      if (months >= 6) return '长期'
+      if (months >= 3) return '中期'
+      return '短期'
+    }
+  }
+  if (/半年|6个月/i.test(s)) return '长期'
+  if (/\d+\s*周/i.test(s) || /短期/i.test(s)) return '短期'
+  return ''
+}
+
+const inferConsultantLevel = (yearsText: string, rawText: string): string => {
+  const y = String(yearsText || '').trim()
+  const raw = String(rawText || '').trim()
+  const s = `${y} ${raw}`
+  if (!s.trim()) return ''
+
+  if (/专家/i.test(s)) return '专家'
+  if (/高级|资深/i.test(s)) return '高级'
+  if (/中级/i.test(s)) return '中级'
+  if (/初级/i.test(s)) return '初级'
+  if (/0\s*经验|零经验/i.test(s)) return '0经验'
+
+  const m = y.match(/(\d+)\s*年以上/)
+  if (m && m[1]) {
+    const n = Number(m[1])
+    if (Number.isFinite(n)) {
+      if (n >= 10) return '10年以上'
+      if (n >= 7) return '7-10年'
+      if (n >= 3) return '3-6年'
+      if (n >= 1) return '1-3年'
+    }
+  }
+
+  const m2 = y.match(/^(\d+)\s*年$/)
+  if (m2 && m2[1]) {
+    const n = Number(m2[1])
+    if (Number.isFinite(n)) {
+      if (n >= 10) return '10年以上'
+      if (n >= 7) return '7-10年'
+      if (n >= 3) return '3-6年'
+      if (n >= 1) return '1-3年'
+    }
+  }
+  return ''
+}
+
+const inferCooperationMode = (rawText: string): string => {
+  const raw = String(rawText || '').trim()
+  if (!raw) return ''
+  if (/\bfree\b/i.test(raw) || /free需求/i.test(raw)) return 'free'
+  if (/兼职/i.test(raw)) return '兼职'
+  if (/甲方入职/i.test(raw)) return '甲方入职'
+  if (/乙方入职/i.test(raw)) return '乙方入职'
+  if (/入职/i.test(raw)) return '入职'
+  return ''
+}
+
+const inferTimeRequirement = (rawText: string): string => {
+  const raw = String(rawText || '').trim()
+  if (!raw) return ''
+  if (/快速到岗|尽快|立即|马上|急需|急招/i.test(raw)) return '快速到岗'
+  return ''
+}
+
+const inferExtraTags = (rawText: string, parsed: any) => {
+  const cooperation_mode = inferCooperationMode(rawText)
+  const project_cycle = inferProjectCycle(parsed?.duration_text || '', rawText)
+  const consultant_level = inferConsultantLevel(parsed?.years_text || '', rawText)
+  const time_requirement = inferTimeRequirement(rawText)
+  return { cooperation_mode, project_cycle, consultant_level, time_requirement }
+}
+
+const buildTagSummary = (rawText: string, parsed: any, extras: any, useForm: boolean) => {
+  const city = (useForm ? String(form.value.city || '').trim() : '') || String(parsed?.city || '').trim()
+  const duration = (useForm ? String(form.value.duration_text || '').trim() : '') || String(parsed?.duration_text || '').trim()
+  const years = (useForm ? String(form.value.years_text || '').trim() : '') || String(parsed?.years_text || '').trim()
+  const langTag = normalizeLanguageTag((useForm ? String(form.value.language || '').trim() : '') || String(parsed?.language || '').trim())
+  const cooperation = (useForm ? String(form.value.cooperation_mode || '').trim() : '') || String(extras?.cooperation_mode || '').trim()
+  const cycleTag = (useForm ? String(form.value.project_cycle || '').trim() : '') || String(extras?.project_cycle || '').trim()
+  const level = (useForm ? String(form.value.consultant_level || '').trim() : '') || String(extras?.consultant_level || '').trim()
+  const timeReq = (useForm ? String(form.value.time_requirement || '').trim() : '') || String(extras?.time_requirement || '').trim()
+
+  const parts: string[] = []
+  if (city) parts.push(`地点:${city}`)
+  if (cooperation) parts.push(`合作:${cooperation}`)
+  if (cycleTag) parts.push(`周期:${cycleTag}`)
+  if (duration && !cycleTag) parts.push(`周期:${duration}`)
+  if (level) parts.push(`级别:${level}`)
+  if (years && !level) parts.push(`年限:${years}`)
+  if (langTag) parts.push(`语言:${langTag}`)
+  if (timeReq) parts.push(`时间:${timeReq}`)
+
+  return parts.join(' | ')
 }
 
 // 需求原文输入事件（防抖处理）
@@ -420,9 +766,17 @@ const handleAutoRecognize = async () => {
     parseAndFillForm(rawText)
 
     await ensureLogin()
-    const user = await getOrCreateUserProfile()
-
-    const similarityCheck = await checkSimilarDemands(rawText, user.uid, 7, 0.7)
+    const user = await getPublisherProfile()
+    const cfg = adminConfig.value
+    const similarityCheck = cfg.similarity_enabled
+      ? await checkSimilarDemandsByPolicy({
+          rawText,
+          currentUserId: user.uid,
+          days: 7,
+          threshold: cfg.similarity_threshold,
+          rule: cfg.similarity_rule,
+        })
+      : { hasSimilar: false, similarDemands: [] as any[] }
 
     if (!similarityCheck.hasSimilar || similarityCheck.similarDemands.length === 0) {
       recognizeResult.value = {
@@ -433,10 +787,10 @@ const handleAutoRecognize = async () => {
       return
     }
 
-    const sameUserSimilar = similarityCheck.similarDemands.find(d => d.isSameUser)
+    const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
     const best = sameUserSimilar || similarityCheck.similarDemands[0]
     const percent = Math.round(best.similarity * 100)
-    const isHigh = !!best.isSameUser && best.similarity > 0.85
+    const isHigh = !!best.isSameUser && best.similarity >= cfg.similarity_threshold
 
     recognizeResult.value = {
       level: isHigh ? 'high' : 'medium',
@@ -459,19 +813,31 @@ const checkDemandsSimilarity = async (demands: string[]) => {
   try {
     await ensureLogin()
     const user = await getOrCreateUserProfile()
+    const cfg = adminConfig.value
     
     // 检查每条需求的相似度
     const demandsWithSimilarity = await Promise.all(
       demands.map(async (demandText) => {
+        const quality = validateDemandQuality(demandText)
+        const parsed = parseDemandText(demandText)
+        const inferred = inferExtraTags(demandText, parsed)
         // 检查是否有相似需求
-        const similarityCheck = await checkSimilarDemands(demandText, user.uid, 7, 0.7)
+        const similarityCheck = cfg.similarity_enabled
+          ? await checkSimilarDemandsByPolicy({
+              rawText: demandText,
+              currentUserId: user.uid,
+              days: 7,
+              threshold: cfg.similarity_threshold,
+              rule: cfg.similarity_rule,
+            })
+          : { hasSimilar: false, similarDemands: [] as any[] }
         
         let maxSimilarity = 0
         let isSameUser = false
         
         if (similarityCheck.hasSimilar && similarityCheck.similarDemands.length > 0) {
           // 检查是否有同一用户发布的相似需求
-          const sameUserSimilar = similarityCheck.similarDemands.find(d => d.isSameUser)
+          const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
           
           if (sameUserSimilar) {
             maxSimilarity = sameUserSimilar.similarity
@@ -482,14 +848,15 @@ const checkDemandsSimilarity = async (demands: string[]) => {
           }
         }
         
-        // 判断是否可以发布：同一用户相似度>85%不能发布，不同用户都可以发布
-        const canPublish = !(isSameUser && maxSimilarity > similarityThreshold)
-        
+        const canPublish = !!quality.ok && !(isSameUser && maxSimilarity >= cfg.similarity_threshold)
+
         return {
           text: demandText,
           similarity: Math.round(maxSimilarity * 100) / 100,
           isSameUser,
           canPublish,
+          blockedReason: quality.ok ? undefined : quality.reason,
+          tagSummary: buildTagSummary(demandText, parsed, inferred, false),
         }
       })
     )
@@ -507,12 +874,22 @@ const checkDemandsSimilarity = async (demands: string[]) => {
   } catch (e) {
     console.error('检查相似度失败:', e)
     // 如果检查失败，仍然显示拆分预览，但不显示相似度
-    splitDemands.value = demands.map(text => ({
-      text,
-      similarity: 0,
-      canPublish: true,
-    }))
-    selectedDemands.value = new Set(demands.map((_, index) => index))
+    splitDemands.value = demands.map(text => {
+      const quality = validateDemandQuality(text)
+      const parsed = parseDemandText(text)
+      const inferred = inferExtraTags(text, parsed)
+      return {
+        text,
+        similarity: 0,
+        canPublish: !!quality.ok,
+        blockedReason: quality.ok ? undefined : quality.reason,
+        tagSummary: buildTagSummary(text, parsed, inferred, false),
+      }
+    })
+    const selectableIndices = splitDemands.value
+      .map((_, index) => index)
+      .filter(index => splitDemands.value[index].canPublish)
+    selectedDemands.value = new Set(selectableIndices)
   } finally {
     checkingSimilarity.value = false
   }
@@ -523,6 +900,11 @@ const toggleDemandSelection = (index: number) => {
   const demand = splitDemands.value[index]
   // 如果相似度过高，不允许选择
   if (!demand || !demand.canPublish) {
+    const reason = demand && demand.blockedReason
+    if (reason) {
+      uni.showToast({ title: reason, icon: 'none', duration: 2000 })
+      return
+    }
     uni.showToast({
       title: `相似度过高（${Math.round(demand.similarity * 100)}%），无法发布`,
       icon: 'none',
@@ -566,9 +948,21 @@ const cancelSplit = () => {
 }
 
 onMounted(async () => {
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
+
+  canView.value = true
+  try {
+    adminConfig.value = await fetchAdminConfig()
+  } catch {
+    adminConfig.value = getDefaultAdminConfig()
+  }
   // 获取当前用户信息，自动填充提供者名称
   try {
-    const profile = await getOrCreateUserProfile()
+    const profile = await getPublisherProfile()
     if (profile.nickname) {
       form.value.provider_name = profile.nickname
     }
@@ -577,7 +971,48 @@ onMounted(async () => {
   }
 })
 
+const ensureContactMaintained = async (): Promise<boolean> => {
+  if (allowLocalDevBypass) return true
+
+  const prof = await getOrCreateUserProfile()
+  const acct = await getMyAccountInfo()
+
+  const wechat = String(prof?.wechat_id || '').trim()
+  const qq = String(prof?.qq_id || '').trim()
+  const phone = String((acct as any)?.phone || '').trim()
+  const email = String((acct as any)?.email || '').trim()
+
+  const ok = !!(wechat || qq || phone || email)
+  if (!ok) {
+    uni.showToast({ title: '个人联系信息未维护，请维护后再发布', icon: 'none', duration: 2500 })
+    return false
+  }
+  return true
+}
+
+const validateDemandQuality = (text: string): { ok: boolean; reason?: string } => {
+  const raw = String(text || '').trim()
+  if (!raw) return { ok: false, reason: '内容为空，无法发布' }
+
+  const cleaned = raw
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/[\|｜]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (cleaned.length < 8) {
+    return { ok: false, reason: '内容过短或仅标签，无法发布' }
+  }
+  return { ok: true }
+}
+
 const handleSubmit = async () => {
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
   // 验证必填项
   if (!form.value.raw_text.trim()) {
     uni.showToast({ title: '请输入需求原文', icon: 'none' })
@@ -589,34 +1024,49 @@ const handleSubmit = async () => {
     return
   }
 
+  const q = validateDemandQuality(form.value.raw_text)
+  if (!q.ok) {
+    uni.showToast({ title: q.reason || '需求内容不符合发布要求', icon: 'none' })
+    return
+  }
+
   submitting.value = true
   try {
     await ensureLogin()
     
     // 获取当前用户ID
-    const user = await getOrCreateUserProfile()
+    const user = await getPublisherProfile()
+
+    const contactOk = await ensureContactMaintained()
+    if (!contactOk) {
+      submitting.value = false
+      return
+    }
     
-    // 检查是否有相似需求（传入当前用户ID）
-    const similarityCheck = await checkSimilarDemands(form.value.raw_text, user.uid, 7, 0.7)
-    
-    if (similarityCheck.hasSimilar && similarityCheck.similarDemands.length > 0) {
-      // 检查是否有同一用户发布的相似需求
-      const sameUserSimilar = similarityCheck.similarDemands.find(d => d.isSameUser)
-      
-      if (sameUserSimilar && sameUserSimilar.similarity > 0.85) {
-        // 同一用户，相似度>85%，阻止发布
-        uni.showToast({
-          title: `检测到您已发布过相似需求（相似度 ${Math.round(sameUserSimilar.similarity * 100)}%），请勿重复发布`,
-          icon: 'none',
-          duration: 3000
-        })
-        submitting.value = false
-        return
-      }
-      
-      // 不同用户，相似度在70%-85%之间，询问用户
-      const mostSimilar = similarityCheck.similarDemands[0]
-      if (mostSimilar.similarity <= 0.85) {
+    const cfg = adminConfig.value
+    if (cfg.similarity_enabled) {
+      const similarityCheck = await checkSimilarDemandsByPolicy({
+        rawText: form.value.raw_text,
+        currentUserId: user.uid,
+        days: 7,
+        threshold: cfg.similarity_threshold,
+        rule: cfg.similarity_rule,
+      })
+
+      if (similarityCheck.hasSimilar && similarityCheck.similarDemands.length > 0) {
+        const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
+
+        if (sameUserSimilar && sameUserSimilar.similarity >= cfg.similarity_threshold) {
+          uni.showToast({
+            title: `检测到您已发布过相似需求（相似度 ${Math.round(sameUserSimilar.similarity * 100)}%），请勿重复发布`,
+            icon: 'none',
+            duration: 3000,
+          })
+          submitting.value = false
+          return
+        }
+
+        const mostSimilar = similarityCheck.similarDemands[0]
         const confirm = await new Promise<boolean>((resolve) => {
           uni.showModal({
             title: '发现相似需求',
@@ -631,7 +1081,7 @@ const handleSubmit = async () => {
             },
           })
         })
-        
+
         if (!confirm) {
           submitting.value = false
           return
@@ -681,6 +1131,7 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
   // 对于批量发布，每条需求独立解析，不使用表单数据
   // 对于单条发布，可以使用表单数据作为补充
   const parsed = parseDemandText(demandText)
+  const inferred = inferExtraTags(demandText, parsed)
   
   console.log('解析结果:', parsed)
   
@@ -691,26 +1142,41 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
   let language = ''
   let daily_rate = ''
   let is_remote: boolean | undefined = undefined
+  let cooperation_mode = ''
+  let project_cycle = ''
+  let consultant_level = ''
+  let time_requirement = ''
   
   if (useFormData) {
     // 单条发布：优先使用表单数据，解析结果作为补充
     moduleCodes = form.value.module_codes.length > 0 ? form.value.module_codes : parsed.module_codes
     city = form.value.city.trim() || parsed.city || '未指定'
     duration_text = form.value.duration_text.trim() || parsed.duration_text
+    project_cycle = String(form.value.project_cycle || '').trim() || inferred.project_cycle
     years_text = form.value.years_text.trim() || parsed.years_text
+    consultant_level = String(form.value.consultant_level || '').trim() || inferred.consultant_level
     language = form.value.language || parsed.language
     daily_rate = parsed.daily_rate || ''
     is_remote = form.value.is_remote !== undefined ? form.value.is_remote : parsed.is_remote
+    cooperation_mode = String(form.value.cooperation_mode || '').trim() || inferred.cooperation_mode
+    time_requirement = String(form.value.time_requirement || '').trim() || inferred.time_requirement
   } else {
     // 批量发布：每条需求独立解析，不使用表单数据
     moduleCodes = parsed.module_codes.length > 0 ? parsed.module_codes : ['OTHER']
     city = parsed.city || '未指定'
     duration_text = parsed.duration_text
+    project_cycle = inferred.project_cycle
     years_text = parsed.years_text
+    consultant_level = inferred.consultant_level
     language = parsed.language
     daily_rate = parsed.daily_rate || ''
     is_remote = parsed.is_remote
+    cooperation_mode = inferred.cooperation_mode
+    time_requirement = inferred.time_requirement
   }
+
+  const work_mode = is_remote === true ? '远程' : is_remote === false ? '现场' : ''
+  const language_tag = normalizeLanguageTag(language)
   
   // 确保至少有一个模块
   if (moduleCodes.length === 0) {
@@ -732,13 +1198,44 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
     module_labels: moduleLabels,
     city: city,
     duration_text: duration_text,
+    project_cycle,
     years_text: years_text,
+    consultant_level,
     language: language,
+    language_tag,
+    cooperation_mode,
+    work_mode,
+    time_requirement,
     provider_name: form.value.provider_name.trim() || user.nickname || '匿名用户',
     provider_user_id: user.uid,
     createdAt: new Date(),
     updatedAt: new Date(),
   }
+
+  const tags: string[] = []
+  moduleCodes.forEach((m) => {
+    const v = String(m || '').trim().toUpperCase()
+    if (v && !tags.includes(v)) tags.push(v)
+  })
+  if (city && !tags.includes(city)) tags.push(city)
+  if (cooperation_mode && !tags.includes(cooperation_mode)) tags.push(cooperation_mode)
+  if (work_mode && !tags.includes(work_mode)) tags.push(work_mode)
+  if (consultant_level && !tags.includes(consultant_level)) tags.push(consultant_level)
+  if (project_cycle && !tags.includes(project_cycle)) tags.push(project_cycle)
+  if (language_tag && !tags.includes(language_tag)) tags.push(language_tag)
+  if (time_requirement && !tags.includes(time_requirement)) tags.push(time_requirement)
+
+  demandData.tags_json = JSON.stringify(tags)
+  demandData.attributes_json = JSON.stringify({
+    module_codes: moduleCodes,
+    city,
+    cooperation_mode,
+    work_mode,
+    consultant_level,
+    project_cycle,
+    language_tag,
+    time_requirement,
+  })
 
   // 如果有工作方式，添加到数据中
   if (is_remote !== undefined) {
@@ -757,17 +1254,40 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
     provider_user_id: demandData.provider_user_id
   })
 
-  // 保存到数据库
-  const db = app.database()
-  const result = await db.collection('sap_demands_raw').add(demandData)
-  
-  console.log('需求保存成功，ID:', (result as any).id || (result as any)._id)
-  
-  return result
+  const token = await ensureApiToken().catch(() => '')
+  const resp: any = await new Promise((resolve, reject) => {
+    const header: any = {
+      'Content-Type': 'application/json',
+      'x-uid': String(user.uid || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
+    }
+    if (token) header.Authorization = `Bearer ${token}`
+
+    uni.request({
+      url: `${API_BASE}/demands/ingest`,
+      method: 'POST',
+      data: demandData,
+      header,
+      success: (res) => resolve((res as any)?.data),
+      fail: (err) => reject(err),
+    })
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error(String((resp && resp.error) || 'INGEST_FAILED'))
+  }
+
+  console.log('需求保存成功，ID:', String(resp.raw_id || ''))
+  return resp
 }
 
 // 批量发布多条需求
 const handleBatchSubmit = async () => {
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
   if (selectedDemands.value.size === 0) {
     uni.showToast({ title: '请至少选择一条需求', icon: 'none' })
     return
@@ -776,6 +1296,12 @@ const handleBatchSubmit = async () => {
   submitting.value = true
   try {
     await ensureLogin()
+
+    const contactOk = await ensureContactMaintained()
+    if (!contactOk) {
+      submitting.value = false
+      return
+    }
     
     const selectedIndices = Array.from(selectedDemands.value).sort()
     let successCount = 0
@@ -931,6 +1457,35 @@ const handleBatchSubmit = async () => {
   flex-wrap: wrap;
   gap: 12rpx;
   margin-bottom: 8rpx;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.tag-chip {
+  padding: 10rpx 18rpx;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1rpx solid rgba(255, 255, 255, 0.1);
+  border-radius: 999rpx;
+  transition: all 0.2s;
+}
+
+.tag-chip--active {
+  background: rgba(76, 175, 80, 0.18);
+  border-color: rgba(76, 175, 80, 0.85);
+}
+
+.tag-chip-text {
+  font-size: 22rpx;
+  color: #e4edf7;
+}
+
+.tag-chip--active .tag-chip-text {
+  color: #4caf50;
+  font-weight: 600;
 }
 
 .module-actions {
@@ -1285,6 +1840,16 @@ const handleBatchSubmit = async () => {
    align-items: center;
    gap: 12rpx;
    flex-wrap: wrap;
+ }
+
+ .split-item-tags {
+   margin-top: 4rpx;
+ }
+
+ .split-item-tags-text {
+   font-size: 20rpx;
+   color: #94a3b8;
+   line-height: 1.5;
  }
 
  .similarity-badge {

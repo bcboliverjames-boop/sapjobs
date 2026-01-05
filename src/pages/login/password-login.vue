@@ -37,7 +37,7 @@
             v-model="password"
           />
           <button class="toggle-password-btn" @click="togglePassword">
-            {{ showPassword ? '🙈' : '👁️' }}
+            {{ showPassword ? '隐藏' : '显示' }}
           </button>
         </view>
       </view>
@@ -53,8 +53,9 @@
       
       <!-- 快捷链接 -->
       <view class="quick-links">
-        <text @click="goToCodeLogin" class="link-text">验证码登录</text>
-        <text @click="goBack" class="link-text">返回</text>
+        <navigator url="/pages/login/phone-login" class="link-text">手机验证码登录</navigator>
+        <navigator url="/pages/login/email-login" class="link-text">邮箱验证码登录</navigator>
+        <navigator url="/pages/login/register" class="link-text">注册</navigator>
       </view>
     </view>
     
@@ -69,7 +70,25 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { signInWithPassword } from '../../utils/cloudbase'
+import { onLoad } from '@dcloudio/uni-app'
+import { loginWithPassword } from '../../utils/user'
+
+const goBackOrHome = () => {
+  try {
+    uni.navigateBack({
+      delta: 1,
+      fail: () => {
+        try {
+          uni.reLaunch({ url: '/pages/index/index' })
+        } catch {}
+      },
+    })
+  } catch {
+    try {
+      uni.reLaunch({ url: '/pages/index/index' })
+    } catch {}
+  }
+}
 
 // 响应式数据
 const username = ref('')
@@ -78,6 +97,18 @@ const showPassword = ref(false)
 const loading = ref(false)
 const loadingText = ref('')
 const usernameType = ref('')
+
+onLoad((query: any) => {
+  try {
+    const raw = query && (query.identifier || query.username || query.account)
+    const next = String(raw || '').trim()
+    if (!next) return
+    username.value = decodeURIComponent(next)
+    onUsernameInput()
+  } catch {
+    // ignore
+  }
+})
 
 // 计算属性
 const canLogin = computed(() => {
@@ -147,7 +178,7 @@ const handleLogin = async () => {
     loading.value = true
     loadingText.value = '登录中...'
     
-    const loginResult = await signInWithPassword(username.value.trim(), password.value)
+    await loginWithPassword(username.value.trim(), password.value)
     
     uni.showToast({
       title: '登录成功',
@@ -156,9 +187,7 @@ const handleLogin = async () => {
     
     // 延迟跳转到首页
     setTimeout(() => {
-      uni.reLaunch({
-        url: '/pages/index/index'
-      })
+      goBackOrHome()
     }, 1500)
     
   } catch (error: any) {
@@ -166,8 +195,13 @@ const handleLogin = async () => {
     
     // 显示友好的错误信息
     let errorMessage = '登录失败'
-    if (error.message) {
-      errorMessage = error.message
+    const raw = String((error && (error.message || error.error)) || '').trim()
+    if (raw) {
+      if (raw === 'INVALID_CREDENTIALS') {
+        errorMessage = '账号或密码错误'
+      } else {
+        errorMessage = raw
+      }
     }
     
     uni.showToast({
@@ -180,50 +214,75 @@ const handleLogin = async () => {
   }
 }
 
-// 跳转到验证码登录
-const goToCodeLogin = () => {
-  uni.navigateBack()
+const goToPhoneLogin = () => {
+  uni.navigateTo({ url: '/pages/login/phone-login' })
 }
 
-// 返回
-const goBack = () => {
-  uni.navigateBack()
+const goToEmailLogin = () => {
+  uni.navigateTo({ url: '/pages/login/email-login' })
+}
+
+const goToRegister = () => {
+  uni.navigateTo({ url: '/pages/login/register' })
 }
 </script>
 
 <style scoped>
 .login-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 60rpx 40rpx;
+  background: #F3F4F6;
+  padding: 64rpx 36rpx 44rpx;
   box-sizing: border-box;
+  color: #111827;
+  font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-container::before {
+  content: "";
+  position: absolute;
+  top: -160rpx;
+  right: -220rpx;
+  width: 520rpx;
+  height: 520rpx;
+  background: rgba(37, 99, 235, 0.10);
+  transform: rotate(18deg);
+  border-radius: 120rpx;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .login-header {
-  text-align: center;
-  margin-bottom: 80rpx;
+  text-align: left;
+  margin-bottom: 44rpx;
+  position: relative;
+  z-index: 1;
 }
 
 .title {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: white;
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #111827;
   display: block;
-  margin-bottom: 20rpx;
+  margin-bottom: 10rpx;
 }
 
 .subtitle {
   font-size: 28rpx;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(17, 24, 39, 0.68);
   display: block;
   line-height: 1.4;
 }
 
 .login-form {
   background: white;
-  border-radius: 20rpx;
+  border-radius: 18rpx;
   padding: 60rpx 40rpx;
-  box-shadow: 0 20rpx 40rpx rgba(0, 0, 0, 0.1);
+  border: 2rpx solid rgba(17, 24, 39, 0.10);
+  box-shadow: 0 14rpx 36rpx rgba(17, 24, 39, 0.08);
+  position: relative;
+  z-index: 1;
 }
 
 .input-hint {
@@ -231,7 +290,7 @@ const goBack = () => {
   padding: 20rpx;
   background: #f8f9fa;
   border-radius: 12rpx;
-  border-left: 6rpx solid #667eea;
+  border-left: 6rpx solid #2563EB;
 }
 
 .hint-text {
@@ -266,9 +325,9 @@ const goBack = () => {
 }
 
 .input-field:focus {
-  border-color: #667eea;
+  border-color: #2563EB;
   background: white;
-  box-shadow: 0 0 0 4rpx rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 4rpx rgba(37, 99, 235, 0.10);
 }
 
 .input-type-indicator {
@@ -281,8 +340,8 @@ const goBack = () => {
 
 .type-text {
   font-size: 20rpx;
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.1);
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.10);
   padding: 8rpx 16rpx;
   border-radius: 20rpx;
   font-weight: 500;
@@ -315,12 +374,12 @@ const goBack = () => {
 .login-btn {
   width: 100%;
   height: 88rpx;
-  background: #667eea;
+  background: #2563EB;
   color: white;
   border: none;
   border-radius: 12rpx;
   font-size: 32rpx;
-  font-weight: bold;
+  font-weight: 600;
   margin-top: 40rpx;
   transition: all 0.3s ease;
 }
@@ -339,11 +398,13 @@ const goBack = () => {
   display: flex;
   justify-content: space-between;
   margin-top: 40rpx;
+  position: relative;
+  z-index: 2;
 }
 
 .link-text {
   font-size: 28rpx;
-  color: #667eea;
+  color: #2563EB;
   text-decoration: underline;
 }
 

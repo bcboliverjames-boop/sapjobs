@@ -2,8 +2,8 @@
  * 私信功能工具函数
  */
 
-import { app, ensureLogin } from './cloudbase'
-import { getOrCreateUserProfile } from './user'
+import { app, requireNonGuest } from './cloudbase'
+import { getOrCreateUserProfile, getProfilesByIds } from './user'
 
 /**
  * 发送私信
@@ -13,7 +13,7 @@ export async function sendMessage(
   content: string,
   demandId?: string
 ): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const user = await getOrCreateUserProfile()
   const db = app.database()
   
@@ -31,7 +31,7 @@ export async function sendMessage(
  * 获取对话列表（当前用户的所有对话）
  */
 export async function getConversations(): Promise<any[]> {
-  await ensureLogin()
+  await requireNonGuest()
   const user = await getOrCreateUserProfile()
   const db = app.database()
   
@@ -98,20 +98,11 @@ export async function getConversations(): Promise<any[]> {
   const userIds = conversations.map(c => c.other_user_id)
   
   if (userIds.length > 0) {
-    const usersRes = await db
-      .collection('users')
-      .where({
-        _id: db.command.in(userIds),
-      })
-      .get()
-    
-    const usersMap = new Map()
-    ;(usersRes.data || []).forEach((u: any) => {
-      usersMap.set(u._id, u)
-    })
-    
+    const profilesById = await getProfilesByIds(userIds)
+
     conversations.forEach(conv => {
-      conv.other_user = usersMap.get(conv.other_user_id) || {
+      const pid = String(conv.other_user_id || '').trim()
+      conv.other_user = (pid && profilesById[pid]) || {
         nickname: '未知用户',
         uid: conv.other_user_id,
       }
@@ -132,7 +123,7 @@ export async function getConversations(): Promise<any[]> {
  * 获取与指定用户的对话消息
  */
 export async function getMessagesWithUser(otherUserId: string): Promise<any[]> {
-  await ensureLogin()
+  await requireNonGuest()
   const user = await getOrCreateUserProfile()
   const db = app.database()
   
@@ -187,7 +178,7 @@ export async function getMessagesWithUser(otherUserId: string): Promise<any[]> {
  */
 export async function getUnreadCount(): Promise<number> {
   try {
-    await ensureLogin()
+    await requireNonGuest()
     const user = await getOrCreateUserProfile()
     const db = app.database()
     

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
   wechat_id text,
   qq_id text,
+  occupation text,
   can_share_contact boolean NOT NULL DEFAULT false,
 
   points int NOT NULL DEFAULT 0 CHECK (points >= 0),

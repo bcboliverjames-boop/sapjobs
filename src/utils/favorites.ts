@@ -2,14 +2,14 @@
  * 收藏功能工具函数
  */
 
-import { app, ensureLogin } from './cloudbase'
+import { app, ensureLogin, requireNonGuest } from './cloudbase'
 import { getOrCreateUserProfile } from './user'
 
 /**
  * 收藏需求
  */
 export async function addFavorite(demandId: string): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const user = await getOrCreateUserProfile()
   const db = app.database()
   
@@ -38,7 +38,7 @@ export async function addFavorite(demandId: string): Promise<void> {
  * 取消收藏
  */
 export async function removeFavorite(demandId: string): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const user = await getOrCreateUserProfile()
   const db = app.database()
   
@@ -66,7 +66,8 @@ export async function removeFavorite(demandId: string): Promise<void> {
  */
 export async function isFavorite(demandId: string): Promise<boolean> {
   try {
-    await ensureLogin()
+    const state: any = await ensureLogin()
+    if (state && state.user && (state.user as any)._isGuest) return false
     const user = await getOrCreateUserProfile()
     const db = app.database()
     
@@ -90,7 +91,8 @@ export async function isFavorite(demandId: string): Promise<boolean> {
  */
 export async function checkFavoritesStatus(demandIds: string[]): Promise<Set<string>> {
   try {
-    await ensureLogin()
+    const state: any = await ensureLogin()
+    if (state && state.user && (state.user as any)._isGuest) return new Set()
     const user = await getOrCreateUserProfile()
     const db = app.database()
     

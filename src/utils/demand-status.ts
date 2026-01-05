@@ -1,4 +1,4 @@
-import { app, ensureLogin } from './cloudbase'
+import { app, ensureLogin, requireNonGuest } from './cloudbase'
 
 /**
  * 标记需求状态
@@ -11,7 +11,7 @@ export async function markDemandStatus(
   status: 'applied' | 'interviewed' | 'onboarded' | 'closed',
   nickname: string
 ): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const db = app.database()
   const user = await getCurrentUser()
   
@@ -56,7 +56,7 @@ export async function unmarkDemandStatus(
   status: 'applied' | 'interviewed' | 'onboarded' | 'closed',
   userId: string
 ): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const db = app.database()
   
   const existing = await db
@@ -193,7 +193,7 @@ export async function markDemandReliability(
   reliable: boolean,
   nickname: string
 ): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const db = app.database()
   const user = await getCurrentUser()
   
@@ -239,7 +239,7 @@ export async function unmarkDemandReliability(
   demandId: string,
   userId: string
 ): Promise<void> {
-  await ensureLogin()
+  await requireNonGuest()
   const db = app.database()
   
   const existing = await db
@@ -331,7 +331,7 @@ export async function getUserDemandReliability(
  * 获取当前用户（内部辅助函数）
  */
 async function getCurrentUser() {
-  const state = await ensureLogin()
+  const state = await requireNonGuest()
   if (!state || !state.user) {
     throw new Error('当前未登录')
   }

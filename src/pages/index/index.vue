@@ -2,11 +2,8 @@
   <view class="page">
     <view class="hero">
       <view class="hero-top-actions">
-        <view class="icon-btn" @click="goToRegister">
+        <view class="icon-btn" @click="goToAccount">
           <uni-icons type="person" size="18" color="#F5F1E8" />
-        </view>
-        <view class="icon-btn" @click="goToLogin">
-          <uni-icons type="locked" size="18" color="#F5F1E8" />
         </view>
       </view>
 
@@ -18,7 +15,7 @@
 
         <view class="hero-actions">
           <button class="btn btn-primary" @click="goToDemand">进入需求广场</button>
-          <button class="btn btn-ghost" @click="goToPublish">发布需求</button>
+          <button class="btn btn-ghost" :class="{ 'guest-disabled': isGuest }" @click="goToPublish">发布需求</button>
         </view>
 
         <view class="insights insights--hero">
@@ -151,17 +148,6 @@
       </view>
     </view>
 
-    <view class="quick">
-      <view class="quick-item" @click="goToMessageList">
-        <uni-icons type="chat" size="18" color="#111827" />
-        <text class="quick-text">我的私信</text>
-      </view>
-      <view class="quick-item" @click="goToProfile">
-        <uni-icons type="person" size="18" color="#111827" />
-        <text class="quick-text">我的资料</text>
-      </view>
-    </view>
-
     <view class="footer">
       <view class="footer-links">
         <text class="footer-link" @click="goToPrivacy">隐私政策</text>
@@ -180,7 +166,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ICP_LINK, ICP_NUMBER } from '../../config/site'
-import { app, ensureLogin } from '../../utils/cloudbase'
+import { app, ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
 import { fetchAllUniqueDemands, fetchAllUniqueDemandsByTimeRange, type SapUniqueDemandDoc } from '../../utils/sap-unique-demands'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
  
@@ -191,6 +177,8 @@ const goToDemand = () => {
     url: '/pages/demand/demand',
   })
 }
+
+const isGuest = ref(false)
 
 const goToDemandWithQuery = (q: {
   timeRange?: 'ALL' | 'TODAY' | 'WEEK'
@@ -225,23 +213,20 @@ const parseTs = (v: any): number | null => {
   return Number.isNaN(t) ? null : t
 }
 
-// 跳转到登录页面
-const goToLogin = () => {
-  uni.navigateTo({
-    url: '/pages/login/index'
-  });
-}
+const goToAccount = async () => {
+  try {
+    const state: any = await ensureLogin()
+    const user = state && state.user
+    if (user && !isGuestUser(user)) {
+      uni.navigateTo({
+        url: '/pages/profile/profile'
+      })
+      return
+    }
+  } catch {}
 
-const goToRegister = () => {
   uni.navigateTo({
-    url: '/pages/login/index?mode=register'
-  });
-}
-
-// 跳转到用户信息页面
-const goToProfile = () => {
-  uni.navigateTo({
-    url: '/pages/profile/profile'
+    url: '/pages/login/password-login'
   })
 }
 
@@ -264,16 +249,15 @@ const openTimesheet = () => {
   // #endif
 }
 
-const goToPublish = () => {
-  uni.navigateTo({
-    url: '/pages/demand/publish'
-  })
-}
-
-const goToMessageList = () => {
-  uni.navigateTo({
-    url: '/pages/message/list'
-  })
+const goToPublish = async () => {
+  try {
+    await requireNonGuest()
+    uni.navigateTo({
+      url: '/pages/demand/publish'
+    })
+  } catch {
+    return
+  }
 }
 
 const goToPrivacy = () => {
@@ -625,7 +609,13 @@ const loadUniqueInsights = async () => {
   if (insightsLoading.value) return
   insightsLoading.value = true
   try {
-    await ensureLogin()
+    const state: any = await ensureLogin()
+    const user = state && state.user
+    const skipCloudDb = !!(state && (state as any).isLocalAuth) || !!(user && (user as any)._isLocalAuth) || !!isGuestUser(user)
+    if (skipCloudDb) {
+      insightsMode.value = 'demo'
+      return
+    }
 
     try {
       const db = app.database()
@@ -881,6 +871,15 @@ const handleUniqueDemand = (item: SapUniqueDemandDoc) => {
 
 onMounted(() => {
   loadUniqueInsights()
+})
+
+onMounted(async () => {
+  try {
+    const state: any = await ensureLogin()
+    isGuest.value = !!(state && isGuestUser(state.user))
+  } catch {
+    isGuest.value = false
+  }
 })
 </script>
 
@@ -1266,7 +1265,7 @@ onMounted(() => {
 
 .module-bar-fill {
   width: 100%;
-  background: rgba(194, 150, 88, 0.68);
+  background: rgba(20, 184, 166, 0.92);
   border-radius: 10rpx;
 }
 
@@ -1463,6 +1462,11 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 10rpx;
+}
+
+.guest-disabled {
+  opacity: 0.45;
+  filter: grayscale(1);
 }
 
 .quick-text {

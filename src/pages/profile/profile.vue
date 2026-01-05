@@ -29,6 +29,18 @@
             <text class="label">用户ID:</text>
             <text class="value">{{ userInfo.uid || '未知' }}</text>
           </view>
+          <view v-if="accountInfo && accountInfo.identifier_masked" class="info-item">
+            <text class="label">登录账号:</text>
+            <text class="value">{{ accountInfo.identifier_masked }}</text>
+          </view>
+          <view class="info-item">
+            <text class="label">手机号</text>
+            <input class="input" v-model="accountForm.phone" placeholder="请输入手机号" />
+          </view>
+          <view class="info-item">
+            <text class="label">邮箱</text>
+            <input class="input" v-model="accountForm.email" placeholder="请输入邮箱" />
+          </view>
           <view v-if="userInfo.phone_number" class="info-item">
             <text class="label">手机号:</text>
             <text class="value">{{ userInfo.phone_number }}</text>
@@ -66,6 +78,17 @@
               placeholder="例：5（年）"
             />
           </view>
+          <view class="info-item">
+            <text class="label">职业</text>
+            <picker
+              :range="['SAP顾问', '需求发布者', '其他职业']"
+              @change="(e: any) => (profile.occupation = ['SAP顾问', '需求发布者', '其他职业'][Number(e?.detail?.value || 0)] || '')"
+            >
+              <view class="input">
+                <text>{{ profile.occupation || '请选择职业' }}</text>
+              </view>
+            </picker>
+          </view>
         </view>
 
         <view class="section">
@@ -90,6 +113,13 @@
             <text class="points-value">{{ profile.points }}</text>
             <text class="points-desc">积分达到 {{ getThresholdPoints('viewContact') }} 分即可解锁他人联系方式查看权限</text>
           </view>
+        </view>
+
+        <view v-if="isAdmin" class="section">
+          <text class="section-title">后台管理</text>
+          <button class="primary-btn" @click="goToAdmin" style="margin-top: 14rpx;">
+            进入后台管理
+          </button>
         </view>
 
         <button class="primary-btn" @click="saveProfile" :disabled="saving">
@@ -170,12 +200,37 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { logout, auth, app } from '../../utils/cloudbase'
-import { getOrCreateUserProfile, updateUserProfile, type UserProfile } from '../../utils/user'
+import { logout, auth, app, ensureLogin } from '../../utils/cloudbase'
+import { getLastLoginIdentifier, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile, type UserProfile } from '../../utils/user'
 import { getRewardPoints, getThresholdPoints } from '../../utils/points-config'
 import { navigateTo } from '../../utils'
+import { isAdminUid } from '../../utils/admin'
+
+function getApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\\.0\\.0\\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
 
 const userInfo = ref<any>(null)
+const accountInfo = ref<any>(null)
+const accountForm = ref({
+  phone: '',
+  email: '',
+})
 const profile = ref<UserProfile>({
   uid: '',
   points: 0,
@@ -185,6 +240,7 @@ const profile = ref<UserProfile>({
   avatar_url: '',
   wechat_id: '',
   qq_id: '',
+  occupation: '',
   can_share_contact: false,
 })
 const saving = ref(false)
@@ -205,15 +261,78 @@ const myDemandsLoading = ref(false)
 const myFavorites = ref<any[]>([])
 const myFavoritesLoading = ref(false)
 
+const isAdmin = ref(false)
+
+const isH5Runtime = () => {
+  try {
+    return typeof window !== 'undefined'
+  } catch {
+    return false
+  }
+}
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
+
+function getH5ApiBasesForRetry(base: string): string[] {
+  const b0 = String(base || '').replace(/\/+$/, '')
+  const out = [b0]
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        if (/\:3004\b/.test(b0)) out.push(b0.replace(':3004', ':3005'))
+        else if (/\:3005\b/.test(b0)) out.push(b0.replace(':3005', ':3004'))
+        else out.push('http://127.0.0.1:3004', 'http://127.0.0.1:3005')
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return Array.from(new Set(out.filter(Boolean)))
+}
+
 // 获取用户信息
 const getUserInfo = async () => {
   try {
-    const loginState = await auth.getLoginState()
-    
-    if (loginState && loginState.user) {
+    const loginState: any = await ensureLogin()
+
+    if (loginState && loginState.user && !(loginState.user as any)?._isGuest) {
       userInfo.value = loginState.user
+      isAdmin.value = isAdminUid(String((loginState.user as any)?.uid || '').trim())
       console.log('用户登录状态loginState:', loginState)
       console.log('完整用户信息loginState.user:', loginState.user)
+      accountInfo.value = await getMyAccountInfo()
+
+      const backendPhone = String((accountInfo.value && accountInfo.value.phone) || '').trim()
+      const backendEmail = String((accountInfo.value && accountInfo.value.email) || '').trim()
+
+      let phoneNext = backendPhone
+      let emailNext = backendEmail
+
+      if (!phoneNext || !emailNext) {
+        const last = getLastLoginIdentifier()
+        if (last && last.type === 'phone' && !phoneNext) phoneNext = String(last.value || '').trim()
+        if (last && last.type === 'email' && !emailNext) emailNext = String(last.value || '').trim()
+      }
+
+      accountForm.value = {
+        phone: phoneNext,
+        email: emailNext,
+      }
       const prof = await getOrCreateUserProfile()
       profile.value = {
         ...profile.value,
@@ -276,6 +395,16 @@ const saveProfile = async () => {
   }
   saving.value = true
   try {
+    const occ = String((profile.value as any).occupation || '').trim()
+    if (!occ) {
+      uni.showToast({ title: '请选择职业', icon: 'none' })
+      return
+    }
+    if (occ === '需求发布者' && !(String(profile.value.wechat_id || '').trim() || String(profile.value.qq_id || '').trim())) {
+      uni.showToast({ title: '需求发布者请填写微信号或QQ号', icon: 'none' })
+      return
+    }
+
     // 检查是否是首次完善资料（判断是否有昵称、擅长模块、工作年限等关键信息）
     const isFirstTimeComplete = !profile.value.nickname && 
                                  !profile.value.expertise_modules && 
@@ -299,9 +428,16 @@ const saveProfile = async () => {
         years_of_exp: profile.value.years_of_exp,
         wechat_id: profile.value.wechat_id,
         qq_id: profile.value.qq_id,
+        occupation: (profile.value as any).occupation,
         can_share_contact: profile.value.can_share_contact,
       },
-      { addPoints: pointsToAdd },
+      {
+        addPoints: pointsToAdd,
+        account: {
+          phone: String(accountForm.value.phone || '').trim(),
+          email: String(accountForm.value.email || '').trim(),
+        },
+      },
     )
     profile.value = {
       ...profile.value,
@@ -314,7 +450,11 @@ const saveProfile = async () => {
     }
   } catch (e: any) {
     console.error('保存资料失败:', e)
-    uni.showToast({ title: e?.message || '保存失败', icon: 'none' })
+    const msg = String(e?.message || '')
+    if (msg.includes('GUEST_READONLY')) {
+      return
+    }
+    uni.showToast({ title: msg || '保存失败', icon: 'none' })
   } finally {
     saving.value = false
   }
@@ -351,13 +491,56 @@ const handleLogout = async () => {
 // 跳转到登录页面
 const goToLogin = () => {
   uni.navigateTo({
-    url: '/pages/login/index'
+    url: '/pages/login/password-login'
   })
 }
 
 // 加载我发布的需求
 const loadMyDemands = async () => {
   if (!userInfo.value?.uid) return
+  if (isH5Runtime()) {
+    myDemandsLoading.value = true
+    try {
+      const bases = getH5ApiBasesForRetry(API_BASE)
+      const header = {
+        'x-uid': String(userInfo.value.uid || ''),
+        'x-nickname': encodeURIComponent(String(userInfo.value.nickName || userInfo.value.nickname || '')),
+      }
+
+      let okResp: any = null
+      for (const base of bases) {
+        try {
+          const resp: any = await requestJson({
+            url: `${String(base).replace(/\/+$/, '')}/demands/mine_raw?limit=50`,
+            method: 'GET',
+            header,
+          })
+          if (resp && resp.ok && Array.isArray(resp.demands)) {
+            okResp = resp
+            break
+          }
+        } catch {
+          // try next base
+        }
+      }
+
+      if (!okResp) {
+        myDemands.value = []
+        return
+      }
+
+      myDemands.value = (okResp.demands || []).map((doc: any) => ({
+        id: String(doc.id || doc._id || '').trim(),
+        ...doc,
+      }))
+    } catch (e) {
+      console.error('加载我发布的需求失败(H5):', e)
+      myDemands.value = []
+    } finally {
+      myDemandsLoading.value = false
+    }
+    return
+  }
   myDemandsLoading.value = true
   try {
     const db = app.database()
@@ -385,6 +568,10 @@ const loadMyDemands = async () => {
 // 加载我的收藏
 const loadMyFavorites = async () => {
   if (!userInfo.value?.uid) return
+  if (isH5Runtime()) {
+    myFavorites.value = []
+    return
+  }
   myFavoritesLoading.value = true
   try {
     const db = app.database()
@@ -483,6 +670,10 @@ const goToDemandDetail = (demandId: string) => {
 // 跳转到发布需求
 const goToPublish = () => {
   navigateTo('/pages/demand/publish')
+}
+
+const goToAdmin = () => {
+  navigateTo('/pages/admin/index')
 }
 
 // 监听 activeTab 变化
@@ -733,6 +924,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }

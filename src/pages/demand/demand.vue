@@ -9,7 +9,7 @@
           <view class="refresh-btn" @tap="handleRefreshTags" :class="{ 'refresh-btn--loading': refreshingTags }">
             <text class="refresh-btn-text">{{ refreshingTags ? '刷新中...' : '🔄 刷新标签' }}</text>
           </view>
-          <view class="publish-btn" @tap="goToPublish">
+          <view class="publish-btn" @tap="goToPublish" :class="{ 'guest-disabled': isGuest }">
             <text class="publish-btn-text">+ 发布</text>
           </view>
         </view>
@@ -202,7 +202,8 @@
             class="card-status-item"
             :class="[
               'card-status-item--applied',
-              { 'card-status-item--active': card.userStatuses?.includes('applied') }
+              { 'card-status-item--active': card.userStatuses?.includes('applied') },
+              { 'guest-disabled': isGuest }
             ]"
             @tap.stop="handleCardStatusClick(card, 'applied')"
           >
@@ -214,7 +215,8 @@
             class="card-status-item"
             :class="[
               'card-status-item--interviewed',
-              { 'card-status-item--active': card.userStatuses?.includes('interviewed') }
+              { 'card-status-item--active': card.userStatuses?.includes('interviewed') },
+              { 'guest-disabled': isGuest }
             ]"
             @tap.stop="handleCardStatusClick(card, 'interviewed')"
           >
@@ -226,7 +228,8 @@
             class="card-status-item"
             :class="[
               'card-status-item--onboarded',
-              { 'card-status-item--active': card.userStatuses?.includes('onboarded') }
+              { 'card-status-item--active': card.userStatuses?.includes('onboarded') },
+              { 'guest-disabled': isGuest }
             ]"
             @tap.stop="handleCardStatusClick(card, 'onboarded')"
           >
@@ -238,7 +241,8 @@
             class="card-status-item"
             :class="[
               'card-status-item--closed',
-              { 'card-status-item--active': card.userStatuses?.includes('closed') }
+              { 'card-status-item--active': card.userStatuses?.includes('closed') },
+              { 'guest-disabled': isGuest }
             ]"
             @tap.stop="handleCardStatusClick(card, 'closed')"
           >
@@ -251,7 +255,7 @@
         <view class="card-reliability-bar" @tap.stop>
           <view 
             class="card-reliability-item card-reliability-item--reliable"
-            :class="{ 'card-reliability-item--active': card.userReliability === true }"
+            :class="{ 'card-reliability-item--active': card.userReliability === true, 'guest-disabled': isGuest }"
             @tap.stop="handleCardReliabilityClick(card, true)"
           >
             <text class="card-reliability-icon">👍</text>
@@ -260,7 +264,7 @@
           </view>
           <view 
             class="card-reliability-item card-reliability-item--unreliable"
-            :class="{ 'card-reliability-item--active': card.userReliability === false }"
+            :class="{ 'card-reliability-item--active': card.userReliability === false, 'guest-disabled': isGuest }"
             @tap.stop="handleCardReliabilityClick(card, false)"
           >
             <text class="card-reliability-icon">👎</text>
@@ -270,7 +274,7 @@
 
           <view
             class="card-favorite-btn"
-            :class="{ 'card-favorite-btn--active': card.isFavorited }"
+            :class="{ 'card-favorite-btn--active': card.isFavorited, 'guest-disabled': isGuest }"
             @tap.stop="toggleCardFavorite(card)"
           >
             <text class="card-favorite-icon">{{ card.isFavorited ? '❤️' : '🤍' }}</text>
@@ -319,7 +323,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { onShow, onLoad } from '@dcloudio/uni-app'
-import { app, ensureLogin } from '../../utils/cloudbase'
+import { app, ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
 import { parseDemandText } from '../../utils/demand-parser'
 import { calculateTextSimilarity } from '../../utils/demand-similarity'
@@ -388,7 +392,8 @@ const BASE_MODULES = [
   { code: 'MM', name: 'MM' },
   { code: 'SD', name: 'SD' },
   { code: 'PP', name: 'PP' },
-  { code: 'EWM', name: 'EWM/WM' },
+  { code: 'WM', name: 'WM' },
+  { code: 'EWM', name: 'EWM' },
 ]
 
 const extraModules = ref<{ code: string; name: string }[]>([])
@@ -471,6 +476,7 @@ const activeLanguage = ref<'ALL' | 'EN' | 'JP'>('ALL')
 const loading = ref(true)
 const allDemands = ref<DemandCard[]>([])
 const useLocalFallback = ref(false)
+const isGuest = ref(false)
 const searchKeyword = ref('')
 const refreshingTags = ref(false) // 是否正在刷新标签
 const commentsByDemand = ref<
@@ -607,8 +613,8 @@ const extractCityFromUnique = (d: SapUniqueDemandDoc): string => {
 
 const MODULE_LABEL_MAP: Record<string, string> = {
   FICO: 'FI/CO',
-  WM: 'EWM/WM',
-  EWM: 'EWM/WM',
+  WM: 'WM',
+  EWM: 'EWM',
   OTHER: '其他',
 }
 
@@ -966,6 +972,15 @@ watch(activeTimeRange, () => {
   refreshTimeWindow()
 })
 
+onMounted(async () => {
+  try {
+    const state: any = await ensureLogin()
+    isGuest.value = !!(state && isGuestUser(state.user))
+  } catch {
+    isGuest.value = false
+  }
+})
+
 onLoad((options) => {
   const module = String((options as any)?.module || '').trim()
   const tr = String((options as any)?.timeRange || '').trim().toUpperCase()
@@ -1198,8 +1213,13 @@ const goToDetailFromComment = (demandId: string) => {
   uni.navigateTo({ url: `/pages/demand/detail?uniqueId=${uid}` })
 }
 
-const goToPublish = () => {
-  uni.navigateTo({ url: '/pages/demand/publish' })
+const goToPublish = async () => {
+  try {
+    await requireNonGuest()
+    uni.navigateTo({ url: '/pages/demand/publish' })
+  } catch {
+    return
+  }
 }
 
 // 格式化人天价格显示
@@ -1220,7 +1240,7 @@ const toggleCardFavorite = async (card: DemandCard) => {
 
   card.favoriting = true
   try {
-    await ensureLogin()
+    await requireNonGuest()
     if (card.isFavorited) {
       await removeFavorite(card.id)
       card.isFavorited = false
@@ -1232,6 +1252,9 @@ const toggleCardFavorite = async (card: DemandCard) => {
     }
   } catch (e) {
     const msg = String((e as any)?.message || '')
+    if (msg.includes('GUEST_READONLY')) {
+      return
+    }
     if (msg.includes('已经收藏')) {
       card.isFavorited = true
       uni.showToast({ title: '已收藏', icon: 'success' })
@@ -1260,7 +1283,7 @@ const statusOptions = [
 // 处理列表页状态点击
 const handleCardStatusClick = async (card: DemandCard, status: string) => {
   try {
-    await ensureLogin()
+    await requireNonGuest()
     const user = await getOrCreateUserProfile()
     
     const statusOption = statusOptions.find(s => s.value === status)
@@ -1314,14 +1337,18 @@ const handleCardStatusClick = async (card: DemandCard, status: string) => {
     uni.showToast({ title: alreadyMarked ? '状态已取消' : '状态标记成功', icon: 'none' })
   } catch (e: any) {
     console.error('Failed to mark/unmark status:', e)
-    uni.showToast({ title: e?.message || '标记失败', icon: 'none' })
+    const msg = String(e?.message || '')
+    if (msg.includes('GUEST_READONLY')) {
+      return
+    }
+    uni.showToast({ title: msg || '标记失败', icon: 'none' })
   }
 }
 
 // 处理列表页评价点击
 const handleCardReliabilityClick = async (card: DemandCard, reliable: boolean) => {
   try {
-    await ensureLogin()
+    await requireNonGuest()
     const user = await getOrCreateUserProfile()
     
     // 检查是否已评价 -> 同评价则取消
@@ -1344,7 +1371,11 @@ const handleCardReliabilityClick = async (card: DemandCard, reliable: boolean) =
     uni.showToast({ title: reliable ? '已标记为靠谱' : '已标记为不靠谱', icon: 'none' })
   } catch (e: any) {
     console.error('Failed to mark reliability:', e)
-    uni.showToast({ title: e?.message || '评价失败', icon: 'none' })
+    const msg = String(e?.message || '')
+    if (msg.includes('GUEST_READONLY')) {
+      return
+    }
+    uni.showToast({ title: msg || '评价失败', icon: 'none' })
   }
 }
 
@@ -1387,6 +1418,13 @@ const refreshCardReliabilityData = async (card: DemandCard) => {
 // 刷新所有需求的标签
 const handleRefreshTags = async () => {
   if (refreshingTags.value) return
+
+  uni.showToast({
+    title: '刷新标签功能已下线',
+    icon: 'none',
+    duration: 2500,
+  })
+  return
   
   const confirm = await new Promise<boolean>((resolve) => {
     uni.showModal({
@@ -1788,6 +1826,11 @@ const handleRefreshTags = async () => {
   background: rgba(239, 68, 68, 0.22);
   border-color: #ef4444;
   color: #fecdd3;
+}
+
+.guest-disabled {
+  opacity: 0.45;
+  filter: grayscale(1);
 }
 
 .card-reliability-item--active.card-reliability-item--reliable {

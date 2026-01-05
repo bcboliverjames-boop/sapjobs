@@ -231,7 +231,7 @@ async function getAuthHeaders() {
 
   return {
     'x-uid': String(uid || ''),
-    'x-nickname': String(nickname || ''),
+    'x-nickname': encodeURIComponent(String(nickname || '')),
   }
 }
 

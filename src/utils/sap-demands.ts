@@ -1,4 +1,3 @@
-import { app, ensureLogin } from './cloudbase'
 import { parseDemandText } from './demand-parser'
 
 export type SapDemandRecord = {
@@ -381,76 +380,88 @@ export const SAMPLE_DEMANDS: SapDemandRecord[] = [
   },
 ]
 
-const COLLECTION_NAME = 'sap_demands_raw'
+const DEMANDS_API_BASE =
+  (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 // 将示例数据批量写入云数据库（第一次使用时）
 export async function seedSampleDemandsToCloud() {
-  await ensureLogin()
-  const db = app.database()
-  const coll = db.collection(COLLECTION_NAME)
-
-  // 先看是否已经有数据，避免重复灌入
-  const existed = await coll.limit(1).get()
-  if (existed.data && existed.data.length > 0) {
-    return
-  }
-
-  // 简单串行插入几条示例数据（数量不多可以接受）
-  for (const item of SAMPLE_DEMANDS) {
-    await coll.add({
-      ...item,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      source: 'sample',
-    })
-  }
+  return
 }
 
 // 从云数据库获取需求列表
 export async function fetchSapDemandsFromCloud(): Promise<SapDemandRecord[]> {
-  await ensureLogin()
-  const db = app.database()
-  const coll = db.collection(COLLECTION_NAME)
-  const res = await coll.orderBy('createdAt', 'desc').limit(200).get()
+  const base = String(DEMANDS_API_BASE).replace(/\/+$/, '')
+  const resp: any = await requestJson({
+    url: `${base}/demands?limit=200`,
+    method: 'GET',
+  })
 
-  return (res.data || []).map((doc: any) => ({
-    id: doc._id,
-    raw_text: doc.raw_text,
-    module_labels: doc.module_labels || [],
-    module_codes: doc.module_codes || [],
-    city: doc.city || '',
-    duration_text: doc.duration_text || '',
-    years_text: doc.years_text || '',
-    language: doc.language || '',
-    daily_rate: doc.daily_rate, // 人天价格
-    provider_name: doc.provider_name || '未知',
-    provider_user_id: doc.provider_user_id, // 添加发布者ID
-    createdAt: doc.createdAt, // 添加创建时间
-    updatedAt: doc.updatedAt, // 添加更新时间
+  if (!resp || !resp.ok || !Array.isArray(resp.demands)) {
+    throw new Error((resp && resp.error) || 'DEMANDS_LIST_FAILED')
+  }
+
+  return (resp.demands || []).map((doc: any) => ({
+    id: String(doc.id || doc._id || '').trim() || undefined,
+    raw_text: String(doc.raw_text || ''),
+    module_labels: Array.isArray(doc.module_labels) ? doc.module_labels : [],
+    module_codes: Array.isArray(doc.module_codes) ? doc.module_codes : [],
+    city: String(doc.city || ''),
+    duration_text: String(doc.duration_text || ''),
+    years_text: String(doc.years_text || ''),
+    language: String(doc.language || ''),
+    daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
+    provider_name: String(doc.provider_name || '未知'),
+    provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
   }))
 }
 
 // 根据 id 获取单条需求记录
 export async function fetchSapDemandById(id: string): Promise<SapDemandRecord | null> {
   if (!id) return null
-  await ensureLogin()
-  const db = app.database()
-  const coll = db.collection(COLLECTION_NAME)
-  const res = await coll.doc(id).get()
-  const doc = res.data && res.data[0]
+  const base = String(DEMANDS_API_BASE).replace(/\/+$/, '')
+  const resp: any = await requestJson({
+    url: `${base}/demands/${encodeURIComponent(String(id))}`,
+    method: 'GET',
+  })
+
+  if (!resp) return null
+  if (!resp.ok) {
+    if (String(resp.error || '').trim() === 'NOT_FOUND') return null
+    throw new Error(resp.error || 'DEMAND_GET_FAILED')
+  }
+
+  const doc = resp.demand
   if (!doc) return null
   return {
-    id: doc._id,
-    raw_text: doc.raw_text,
-    module_labels: doc.module_labels || [],
-    module_codes: doc.module_codes || [],
-    city: doc.city || '',
-    duration_text: doc.duration_text || '',
-    years_text: doc.years_text || '',
-    language: doc.language || '',
-    daily_rate: doc.daily_rate, // 人天价格
-    provider_name: doc.provider_name || '未知',
-    provider_user_id: doc.provider_user_id,
+    id: String(doc.id || doc._id || '').trim() || undefined,
+    raw_text: String(doc.raw_text || ''),
+    module_labels: Array.isArray(doc.module_labels) ? doc.module_labels : [],
+    module_codes: Array.isArray(doc.module_codes) ? doc.module_codes : [],
+    city: String(doc.city || ''),
+    duration_text: String(doc.duration_text || ''),
+    years_text: String(doc.years_text || ''),
+    language: String(doc.language || ''),
+    daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
+    provider_name: String(doc.provider_name || '未知'),
+    provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }
@@ -465,102 +476,7 @@ export async function refreshAllDemandsTags(): Promise<{
   failed: number
   errors: string[]
 }> {
-  await ensureLogin()
-  const db = app.database()
-  const coll = db.collection(COLLECTION_NAME)
-  
-  let success = 0
-  let failed = 0
-  const errors: string[] = []
-  
-  try {
-    // 获取所有需求（分批处理，避免一次性加载太多）
-    let skip = 0
-    const batchSize = 50
-    let hasMore = true
-    
-    while (hasMore) {
-      const res = await coll
-        .orderBy('createdAt', 'desc')
-        .skip(skip)
-        .limit(batchSize)
-        .get()
-      
-      const demands = res.data || []
-      
-      if (demands.length === 0) {
-        hasMore = false
-        break
-      }
-      
-      // 批量更新
-      for (const doc of demands) {
-        try {
-          const rawText = doc.raw_text || ''
-          if (!rawText.trim()) {
-            continue
-          }
-          
-          // 使用新的解析规则重新解析
-          const parsed = parseDemandText(rawText)
-          
-          // 生成模块标签
-          const availableModules = [
-            { code: 'FICO', name: 'FICO' },
-            { code: 'MM', name: 'MM' },
-            { code: 'SD', name: 'SD' },
-            { code: 'PP', name: 'PP' },
-            { code: 'WM', name: 'WM/EWM' },
-            { code: 'HR', name: 'HR' },
-            { code: 'SAC', name: 'SAC' },
-            { code: 'BI', name: 'BI' },
-            { code: 'BW', name: 'BW' },
-            { code: 'ABAP', name: 'ABAP' },
-            { code: 'OTHER', name: '其他' },
-          ]
-          
-          const moduleLabels = parsed.module_codes.map(code => {
-            const module = availableModules.find(m => m.code === code)
-            return module ? module.name : code
-          })
-          
-          // 确保至少有一个模块
-          const moduleCodes = parsed.module_codes.length > 0 ? parsed.module_codes : ['OTHER']
-          
-          // 更新数据库
-          await coll.doc(doc._id).update({
-            module_codes: moduleCodes,
-            module_labels: moduleLabels,
-            city: parsed.city || '未指定',
-            duration_text: parsed.duration_text || '',
-            years_text: parsed.years_text || '',
-            language: parsed.language || '',
-            daily_rate: parsed.daily_rate || '',
-            is_remote: parsed.is_remote,
-            updatedAt: new Date(), // 添加更新时间标记
-          })
-          
-          success++
-        } catch (e: any) {
-          failed++
-          errors.push(`需求 ${doc._id}: ${e?.message || '更新失败'}`)
-          console.error(`刷新需求 ${doc._id} 失败:`, e)
-        }
-      }
-      
-      skip += batchSize
-      
-      // 如果这一批少于 batchSize，说明已经处理完了
-      if (demands.length < batchSize) {
-        hasMore = false
-      }
-    }
-    
-    return { success, failed, errors }
-  } catch (e: any) {
-    console.error('批量刷新需求标签失败:', e)
-    throw e
-  }
+  return { success: 0, failed: 0, errors: [] }
 }
 
 /**
@@ -568,63 +484,8 @@ export async function refreshAllDemandsTags(): Promise<{
  */
 export async function refreshDemandTags(demandId: string): Promise<boolean> {
   if (!demandId) return false
-  
-  try {
-    await ensureLogin()
-    const db = app.database()
-    const coll = db.collection(COLLECTION_NAME)
-    
-    const res = await coll.doc(demandId).get()
-    const doc = res.data && res.data[0]
-    
-    if (!doc || !doc.raw_text) {
-      return false
-    }
-    
-    // 使用新的解析规则重新解析
-    const parsed = parseDemandText(doc.raw_text)
-    
-    // 生成模块标签
-    const availableModules = [
-      { code: 'FICO', name: 'FICO' },
-      { code: 'MM', name: 'MM' },
-      { code: 'SD', name: 'SD' },
-      { code: 'PP', name: 'PP' },
-      { code: 'WM', name: 'WM/EWM' },
-      { code: 'HR', name: 'HR' },
-      { code: 'SAC', name: 'SAC' },
-      { code: 'BI', name: 'BI' },
-      { code: 'BW', name: 'BW' },
-      { code: 'ABAP', name: 'ABAP' },
-      { code: 'OTHER', name: '其他' },
-    ]
-    
-    const moduleLabels = parsed.module_codes.map(code => {
-      const module = availableModules.find(m => m.code === code)
-      return module ? module.name : code
-    })
-    
-    // 确保至少有一个模块
-    const moduleCodes = parsed.module_codes.length > 0 ? parsed.module_codes : ['OTHER']
-    
-    // 更新数据库
-    await coll.doc(demandId).update({
-      module_codes: moduleCodes,
-      module_labels: moduleLabels,
-      city: parsed.city || '未指定',
-      duration_text: parsed.duration_text || '',
-      years_text: parsed.years_text || '',
-      language: parsed.language || '',
-      daily_rate: parsed.daily_rate || '',
-      is_remote: parsed.is_remote,
-      updatedAt: new Date(),
-    })
-    
-    return true
-  } catch (e) {
-    console.error('刷新需求标签失败:', e)
-    return false
-  }
+
+  return false
 }
 
 

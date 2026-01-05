@@ -3,7 +3,52 @@
  * 用于检测重复或相似的需求
  */
 
-import { app } from './cloudbase'
+import { parseDemandText } from './demand-parser'
+
+function getDemandsApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'https://api.sapboss.com'
+}
+
+const DEMANDS_API_BASE = getDemandsApiBase()
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
+
+type ParsedDemandLite = {
+  module_codes: string[]
+  city: string
+  is_remote: boolean | undefined
+  duration_text: string
+  years_text: string
+  language: string
+  daily_rate?: string
+}
 
 /**
  * 计算两个文本的相似度（使用简单的字符匹配算法）
@@ -141,6 +186,178 @@ export function checkDemandFeatures(
   }
 }
 
+function normModule(m: any): string {
+  const s = String(m || '').trim().toUpperCase().replace(/\s+/g, '')
+  const t = s.replace(/\\/g, '/').replace(/\|/g, '/').replace(/／/g, '/').replace(/＼/g, '/')
+  if (t === 'FI/CO' || t === 'FICO') return 'FICO'
+  return t
+}
+
+function normStr(v: any): string {
+  return String(v || '').trim()
+}
+
+function normCity(v: any): string {
+  const s = normStr(v)
+  if (!s) return ''
+  if (s === '在家') return '远程'
+  return s
+}
+
+function overlapRatio(a: string[], b: string[]): number {
+  const sa = new Set(a.filter(Boolean))
+  const sb = new Set(b.filter(Boolean))
+  if (!sa.size || !sb.size) return 0
+  let inter = 0
+  for (const x of sa) {
+    if (sb.has(x)) inter += 1
+  }
+  const denom = Math.min(sa.size, sb.size)
+  if (!denom) return 0
+  return inter / denom
+}
+
+function eqScore(a: string, b: string): number {
+  if (!a || !b) return 0
+  return a === b ? 1 : 0
+}
+
+export function calculateCategorySimilarityFromParsed(a: ParsedDemandLite, b: ParsedDemandLite): number {
+  if (!a || !b) return 0
+
+  const aModules = (Array.isArray(a.module_codes) ? a.module_codes : []).map(normModule).filter(Boolean)
+  const bModules = (Array.isArray(b.module_codes) ? b.module_codes : []).map(normModule).filter(Boolean)
+
+  const hasModuleA = aModules.length > 0
+  const hasModuleB = bModules.length > 0
+  if (hasModuleA !== hasModuleB) return 0
+  if (hasModuleA && hasModuleB) {
+    const modScore = overlapRatio(aModules, bModules)
+    if (modScore <= 0) return 0
+  }
+
+  const aCity = normCity(a.city)
+  const bCity = normCity(b.city)
+  if (aCity && bCity && aCity !== bCity) {
+    return 0
+  }
+
+  const weights: Record<string, number> = {
+    module: 3,
+    city: 2,
+    remote: 1,
+    duration: 1,
+    years: 1,
+    language: 1,
+    rate: 1,
+  }
+
+  let totalW = 0
+  let totalS = 0
+
+  if (hasModuleA && hasModuleB) {
+    const s = overlapRatio(aModules, bModules)
+    totalW += weights.module
+    totalS += s * weights.module
+  }
+
+  if (aCity && bCity) {
+    const s = eqScore(aCity, bCity)
+    totalW += weights.city
+    totalS += s * weights.city
+  }
+
+  const ra = a.is_remote === undefined ? '' : String(!!a.is_remote)
+  const rb = b.is_remote === undefined ? '' : String(!!b.is_remote)
+  if (ra && rb) {
+    const s = eqScore(ra, rb)
+    totalW += weights.remote
+    totalS += s * weights.remote
+  }
+
+  const da = normStr(a.duration_text)
+  const db = normStr(b.duration_text)
+  if (da && db) {
+    const s = da === db ? 1 : 0
+    totalW += weights.duration
+    totalS += s * weights.duration
+  }
+
+  const ya = normStr(a.years_text)
+  const yb = normStr(b.years_text)
+  if (ya && yb) {
+    const s = ya === yb ? 1 : 0
+    totalW += weights.years
+    totalS += s * weights.years
+  }
+
+  const la = normStr(a.language)
+  const lb = normStr(b.language)
+  if (la && lb) {
+    const s = la === lb ? 1 : 0
+    totalW += weights.language
+    totalS += s * weights.language
+  }
+
+  const rta = normStr((a as any).daily_rate)
+  const rtb = normStr((b as any).daily_rate)
+  if (rta && rtb) {
+    const s = rta === rtb ? 1 : 0
+    totalW += weights.rate
+    totalS += s * weights.rate
+  }
+
+  if (totalW <= 0) return 0
+  return totalS / totalW
+}
+
+export async function checkSimilarDemandsByPolicy(opts: {
+  rawText: string
+  parsed?: ParsedDemandLite
+  currentUserId?: string
+  days?: number
+  limit?: number
+  threshold?: number
+  rule: 'text' | 'category' | 'hybrid'
+}): Promise<{
+  hasSimilar: boolean
+  similarDemands: Array<{
+    id: string
+    raw_text: string
+    similarity: number
+    createdAt: Date
+    provider_name: string
+    provider_user_id?: string
+    isSameUser?: boolean
+  }>
+}> {
+  const rawText = String(opts.rawText || '')
+  const parsedBase = opts.parsed || (parseDemandText(rawText) as any)
+
+  const resp: any = await requestJson({
+    url: `${String(DEMANDS_API_BASE).replace(/\/+$/, '')}/demands/check_similar`,
+    method: 'POST',
+    data: {
+      rawText,
+      parsed: parsedBase,
+      currentUserId: opts.currentUserId,
+      days: typeof opts.days === 'number' ? opts.days : 7,
+      limit: typeof opts.limit === 'number' ? opts.limit : 100,
+      threshold: typeof opts.threshold === 'number' ? opts.threshold : undefined,
+      rule: opts.rule,
+    },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'CHECK_SIMILAR_FAILED')
+  }
+
+  return {
+    hasSimilar: !!resp.hasSimilar,
+    similarDemands: Array.isArray(resp.similarDemands) ? resp.similarDemands : [],
+  }
+}
+
 /**
  * 检查是否存在相似的需求
  * @param rawText 需求原文
@@ -159,69 +376,22 @@ export async function checkSimilarDemands(
     id: string
     raw_text: string
     similarity: number
-    createdAt: Date
+    createdAt: any
     provider_name: string
     provider_user_id?: string
     isSameUser?: boolean
   }>
 }> {
   try {
-    const db = app.database()
-    const coll = db.collection('sap_demands_raw')
-    
-    // 计算时间范围
-    const now = new Date()
-    const daysAgo = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
-    
-    // 查询最近的需求
-    const res = await coll
-      .where({
-        createdAt: db.command.gte(daysAgo as any),
-      })
-      .orderBy('createdAt', 'desc')
-      .limit(100)
-      .get()
-    
-    const demands = res.data || []
-    const similarDemands: Array<{
-      id: string
-      raw_text: string
-      similarity: number
-      createdAt: Date
-      provider_name: string
-      provider_user_id?: string
-      isSameUser?: boolean
-    }> = []
-    
-    // 检查每条需求的相似度
-    for (const demand of demands) {
-      const similarity = calculateTextSimilarity(rawText, demand.raw_text || '')
-      
-      if (similarity >= similarityThreshold) {
-        const isSameUser = currentUserId && demand.provider_user_id === currentUserId
-        
-        similarDemands.push({
-          id: demand._id,
-          raw_text: demand.raw_text,
-          similarity: Math.round(similarity * 100) / 100, // 保留两位小数
-          createdAt: demand.createdAt,
-          provider_name: demand.provider_name || '未知',
-          provider_user_id: demand.provider_user_id,
-          isSameUser, // 标记是否是同一用户
-        })
-      }
-    }
-    
-    // 按相似度降序排序
-    similarDemands.sort((a, b) => b.similarity - a.similarity)
-    
-    return {
-      hasSimilar: similarDemands.length > 0,
-      similarDemands: similarDemands.slice(0, 5), // 最多返回5条
-    }
-  } catch (e) {
-    console.error('检查相似需求失败:', e)
-    // 出错时返回无相似需求，避免阻塞发布流程
+    return await checkSimilarDemandsByPolicy({
+      rawText,
+      currentUserId,
+      days,
+      threshold: similarityThreshold,
+      rule: 'text',
+    })
+  } catch (error) {
+    console.error('检查相似需求失败:', error)
     return {
       hasSimilar: false,
       similarDemands: [],

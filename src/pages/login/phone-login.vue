@@ -1,8 +1,8 @@
 <template>
   <view class="login-container">
     <view class="login-header">
-      <text class="title">手机验证码登录</text>
-      <text class="subtitle">请输入手机号获取验证码</text>
+      <text class="title">手机登录</text>
+      <text class="subtitle">H5 仅支持手机号 + 密码登录</text>
     </view>
     
     <view class="login-form">
@@ -17,40 +17,42 @@
           maxlength="11"
         />
       </view>
-      <show-captcha />
-      <!-- 验证码输入 -->
-      <view class="input-group">
-        <text class="label">验证码</text>
-        <view class="verification-row">
-          <input 
-            class="input-field verification-input"
-            type="number"
-            placeholder="请输入验证码"
-            v-model="verificationCode"
-            maxlength="6"
-          />
-          <button 
-            class="get-code-btn"
-            :disabled="!isPhoneValid || countdown > 0"
-            @click="getVerificationCode"
-          >
-            {{ countdown > 0 ? `${countdown}s后重试` : '获取验证码' }}
-          </button>
+      <template v-if="!isH5">
+        <show-captcha />
+        <!-- 验证码输入 -->
+        <view class="input-group">
+          <text class="label">验证码</text>
+          <view class="verification-row">
+            <input 
+              class="input-field verification-input"
+              type="number"
+              placeholder="请输入验证码"
+              v-model="verificationCode"
+              maxlength="6"
+            />
+            <button 
+              class="get-code-btn"
+              :disabled="!isPhoneValid || countdown > 0"
+              @click="getVerificationCode"
+            >
+              {{ countdown > 0 ? `${countdown}s后重试` : '获取验证码' }}
+            </button>
+          </view>
         </view>
-      </view>
+      </template>
       
       <!-- 登录按钮 -->
       <button 
         class="login-btn"
-        :disabled="!canLogin"
+        :disabled="isH5 ? !isPhoneValid : !canLogin"
         @click="handleLogin"
       >
-        登录
+        {{ isH5 ? '下一步' : '登录' }}
       </button>
       
       <!-- 返回链接 -->
       <view class="back-login">
-        <text @click="goBack" class="link-text">返回登录方式选择</text>
+        <text @click="goBack" class="link-text">返回密码登录</text>
       </view>
     </view>
   
@@ -60,6 +62,33 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted } from 'vue'
 import { getPhoneVerification, signInWithPhoneCode, ensureLogin } from '../../utils/cloudbase'
+
+const isH5Runtime = () => {
+  try {
+    return typeof window !== 'undefined'
+  } catch {
+    return false
+  }
+}
+
+const isH5 = isH5Runtime()
+
+const goBackOrHome = () => {
+  try {
+    uni.navigateBack({
+      delta: 1,
+      fail: () => {
+        try {
+          uni.reLaunch({ url: '/pages/index/index' })
+        } catch {}
+      },
+    })
+  } catch {
+    try {
+      uni.reLaunch({ url: '/pages/index/index' })
+    } catch {}
+  }
+}
 
 // 响应式数据
 const phoneNumber = ref('')
@@ -81,8 +110,27 @@ const canLogin = computed(() => {
   return isPhoneValid.value && verificationCode.value.length === 6 && verificationInfo.value
 })
 
+const goToPasswordLoginWithIdentifier = (identifier: string) => {
+  const next = String(identifier || '').trim()
+  if (!next) return
+  const url = `/pages/login/password-login?identifier=${encodeURIComponent(next)}`
+  try {
+    uni.redirectTo({ url })
+  } catch {
+    uni.navigateTo({ url })
+  }
+}
+
 // 获取验证码
 const getVerificationCode = async () => {
+  if (isH5) {
+    if (isPhoneValid.value) {
+      goToPasswordLoginWithIdentifier(phoneNumber.value)
+      return
+    }
+    uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
+    return
+  }
   if (!isPhoneValid.value) {
     uni.showToast({
       title: '请输入正确的手机号',
@@ -131,6 +179,14 @@ const startCountdown = () => {
 
 // 手机验证码登录
 const handleLogin = async () => {
+  if (isH5) {
+    if (!isPhoneValid.value) {
+      uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
+      return
+    }
+    goToPasswordLoginWithIdentifier(phoneNumber.value)
+    return
+  }
   if (!canLogin.value) {
     uni.showToast({
       title: '请完善登录信息',
@@ -154,9 +210,7 @@ const handleLogin = async () => {
     })
     
     setTimeout(() => {
-      uni.navigateTo({
-        url: '/pages/index/index'
-      })
+      goBackOrHome()
     }, 1000)   
   } catch (error: any) {
     console.error('登录失败:', error)
@@ -171,7 +225,11 @@ const handleLogin = async () => {
 
 // 返回登录方式选择
 const goBack = () => {
-  uni.navigateBack()
+  try {
+    uni.redirectTo({ url: '/pages/login/password-login' })
+  } catch {
+    uni.navigateBack()
+  }
 }
 
 // 清理定时器
@@ -186,35 +244,54 @@ onUnmounted(() => {
 <style scoped>
 .login-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 60rpx 40rpx;
+  background: #F3F4F6;
+  padding: 64rpx 36rpx 44rpx;
   box-sizing: border-box;
+  color: #111827;
+  font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-container::before {
+  content: "";
+  position: absolute;
+  top: -160rpx;
+  right: -220rpx;
+  width: 520rpx;
+  height: 520rpx;
+  background: rgba(37, 99, 235, 0.10);
+  transform: rotate(18deg);
+  border-radius: 120rpx;
 }
 
 .login-header {
-  text-align: center;
-  margin-bottom: 80rpx;
+  text-align: left;
+  margin-bottom: 44rpx;
+  position: relative;
 }
 
 .title {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: white;
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #111827;
   display: block;
-  margin-bottom: 20rpx;
+  margin-bottom: 10rpx;
 }
 
 .subtitle {
-  font-size: 28rpx;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 26rpx;
+  color: rgba(17, 24, 39, 0.68);
   display: block;
 }
 
 .login-form {
   background: white;
-  border-radius: 20rpx;
+  border-radius: 18rpx;
   padding: 60rpx 40rpx;
-  box-shadow: 0 20rpx 40rpx rgba(0, 0, 0, 0.1);
+  border: 2rpx solid rgba(17, 24, 39, 0.10);
+  box-shadow: 0 14rpx 36rpx rgba(17, 24, 39, 0.08);
+  position: relative;
 }
 
 .input-group {
@@ -241,7 +318,7 @@ onUnmounted(() => {
 }
 
 .input-field:focus {
-  border-color: #667eea;
+  border-color: #2563EB;
   background: white;
 }
 
@@ -258,12 +335,12 @@ onUnmounted(() => {
 .get-code-btn {
   width: 200rpx;
   height: 88rpx;
-  background: #667eea;
+  background: #2563EB;
   color: white;
   border: none;
   border-radius: 12rpx;
-  font-size: 24rpx;
-  white-space: nowrap;
+  font-size: 28rpx;
+  font-weight: 500;
 }
 
 .get-code-btn:disabled {
@@ -274,13 +351,12 @@ onUnmounted(() => {
 .login-btn {
   width: 100%;
   height: 88rpx;
-  background: #667eea;
+  background: #2563EB;
   color: white;
   border: none;
   border-radius: 12rpx;
   font-size: 32rpx;
-  font-weight: bold;
-  margin-top: 40rpx;
+  font-weight: 600;
 }
 
 .login-btn:disabled {
@@ -295,7 +371,7 @@ onUnmounted(() => {
 
 .link-text {
   font-size: 28rpx;
-  color: #667eea;
+  color: #2563EB;
   text-decoration: underline;
 }
 

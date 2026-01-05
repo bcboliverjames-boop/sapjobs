@@ -203,7 +203,7 @@ const handleLogin = async () => {
   }
   if(loginStatus.value === '未登录' || loginStatus.value === '登录失败' || loginStatus.value === '已退出') {
     uni.navigateTo({
-      url: '/pages/login/index' // 跳转到登录页面
+      url: '/pages/login/password-login' // 跳转到登录页面
     })
     return
   }

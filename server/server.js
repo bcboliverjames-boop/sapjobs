@@ -1396,7 +1396,7 @@ app.get('/health', async (req, res) => {
   }
 })
 
-app.get('/unique_demands/:id', async (req, res) => {
+app.get('/unique_demands/:id', async (req, res, next) => {
   if (!demandsFeatureEnabled()) {
     demandsGone(res)
     return
@@ -1405,6 +1405,10 @@ app.get('/unique_demands/:id', async (req, res) => {
   try {
     await ensureUniqueDemandsTable()
     const id = String((req.params && req.params.id) || '').trim()
+    if (id === 'count' || id === 'range' || id === 'all') {
+      next()
+      return
+    }
     if (!id) {
       res.status(400).json({ ok: false, error: 'ID_REQUIRED' })
       return

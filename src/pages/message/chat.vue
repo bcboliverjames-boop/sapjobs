@@ -43,8 +43,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { app, ensureLogin } from '../../utils/cloudbase'
-import { getOrCreateUserProfile } from '../../utils/user'
+import { app, requireNonGuest } from '../../utils/cloudbase'
 import { sendMessage as sendMessageApi, getMessagesWithUser } from '../../utils/messages'
 
 const otherUserId = ref('')
@@ -72,14 +71,14 @@ onLoad(async (options) => {
   otherNickname.value = nickname
   
   try {
-    await ensureLogin()
-    const user = await getOrCreateUserProfile()
-    currentUserId.value = user.uid
+    const state: any = await requireNonGuest()
+    currentUserId.value = String(state?.user?.uid || '')
+    if (!currentUserId.value) throw new Error('UNAUTHORIZED')
     
     await loadMessages()
   } catch (e) {
     console.error('初始化失败:', e)
-    uni.showToast({ title: '加载失败', icon: 'none' })
+    return
   }
 })
 
@@ -111,7 +110,11 @@ const sendMessage = async () => {
     scrollToBottom()
   } catch (e: any) {
     console.error('发送消息失败:', e)
-    uni.showToast({ title: e?.message || '发送失败', icon: 'none' })
+    const msg = String(e?.message || '')
+    if (msg.includes('GUEST_READONLY')) {
+      return
+    }
+    uni.showToast({ title: msg || '发送失败', icon: 'none' })
   } finally {
     sending.value = false
   }

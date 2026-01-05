@@ -6,68 +6,18 @@
     </view>
     
     <view class="login-options">
-      <!-- 匿名登录 -->
-      <view class="login-option" @click="anonymousLogin">
-        <view class="option-icon">👤</view>
-        <view class="option-content">
-          <text class="option-title">确认登录（默认匿名登录）</text>
-          <text class="option-desc">无需注册，快速体验</text>
-        </view>
-        <view class="option-arrow">></view>
-      </view>
-
-      <!-- 微信 OpenID 登录 -->
-      <view class="login-option" @click="openIdLogin">
-        <view class="option-icon">💬</view>
-        <view class="option-content">
-          <text class="option-title">微信小程序 openId 静默登录</text>
-          <text class="option-desc">使用微信 OpenID 静默登录</text>
-        </view>
-        <view class="option-arrow">></view>
-      </view>
-
-      <!-- 微信小程序手机号授权登录 -->
-      <button 
-        open-type="getPhoneNumber" 
-        @getphonenumber="handleGetPhoneNumber"
-        class="login-option-button"
-      >
-        <view class="option-icon">📞</view>
-        <view class="option-content">
-          <text class="option-title">微信小程序手机号授权登录</text>
-          <text class="option-desc">推荐未注册用户使用</text>
-        </view>
-        <view class="option-arrow">></view>
-      </button>
-      
-      <!-- 手机验证码登录 -->
-      <view class="login-option" @click="phoneLogin">
-        <view class="option-icon">📱</view>
-        <view class="option-content">
-          <text class="option-title">手机验证码登录</text>
-          <text class="option-desc">使用手机号获取验证码登录</text>
-        </view>
-        <view class="option-arrow">></view>
-      </view>
-
       <!-- 密码登录 -->
       <view class="login-option" @click="passwordLogin">
-        <view class="option-icon">🔐</view>
+        <view class="option-icon">
+          <uni-icons type="locked" size="22" color="#111827" />
+        </view>
         <view class="option-content">
           <text class="option-title">密码登录</text>
           <text class="option-desc">使用手机号/邮箱/用户名 + 密码登录</text>
         </view>
-        <view class="option-arrow">></view>
-      </view>
-      
-      <!-- 邮箱验证码登录 -->
-      <view class="login-option" @click="emailLogin">
-        <view class="option-icon">📧</view>
-        <view class="option-content">
-          <text class="option-title">邮箱验证码登录</text>
-          <text class="option-desc">使用邮箱获取验证码登录</text>
+        <view class="option-arrow">
+          <uni-icons type="right" size="16" color="#9CA3AF" />
         </view>
-        <view class="option-arrow">></view>
       </view>
     </view>
     
@@ -81,107 +31,13 @@
 </template>
 
 <script setup lang="ts">
-import { initCloudBase, signInWithPhoneAuth, signInWithOpenId, login } from '../../utils/cloudbase'
+import { onMounted } from 'vue'
 
-// 匿名登录
-const anonymousLogin = async () => {
+onMounted(() => {
   try {
-    uni.showLoading({
-      title: '登录中...'
-    })
-    
-    // 使用现有的初始化函数，若没登录会自动进行匿名登录
-    await login()
-    
-    uni.hideLoading()
-    setTimeout(() => {
-      uni.navigateTo({
-        url: '/pages/index/index'
-      })
-    }, 1000)
-  } catch (error: any) {
-    uni.hideLoading()
-    uni.showToast({
-      title: error.message || '登录失败',
-      icon: 'none'
-    })
-  }
-}
-
-// 添加 openIdLogin 方法
-const openIdLogin = async () => {
-  uni.showLoading({
-    title: '正在登录...'
-  })
-
-  try {
-    const loginResult = await signInWithOpenId()
-    console.log('微信 OpenID 登录成功:', loginResult)
-    uni.hideLoading()
-
-    uni.showToast({
-      title: '登录成功',
-      icon: 'success'
-    })
-    // 登录成功后，跳转到首页并关闭所有历史页面
-    setTimeout(() => {
-      uni.navigateTo({
-        url: '/pages/index/index'
-      })
-    }, 1000)
-
-  } catch (error: any) {
-    uni.hideLoading()
-    console.error('微信 OpenID 登录失败:', error)
-    uni.showToast({
-      title: error.message || '登录失败，请重试',
-      icon: 'none'
-    })
-  }
-}
-
-// 微信小程序手机号授权登录
-const handleGetPhoneNumber = async (event: any) => {
-  // console.log("event:", event)
-  if(!event.detail.code){
-    console.error('获取手机号失败:', event.detail.errMsg)
-    uni.showToast({
-      title: '获取手机号失败',
-      icon: 'none'
-    })
-    return
-  }
-  console.log('获取到动态令牌(code):', event.detail.code)
-  uni.showLoading({
-    title: '登录中...'
-  })
-  try {
-    // 手机号授权登录
-    const loginResult = await signInWithPhoneAuth( event.detail.code )
-    console.log('手机号授权登录结果:', loginResult)
-    uni.hideLoading()
-    uni.showToast({
-      title: '登录成功',
-      icon: 'success'
-    })
-    // 延迟跳转到首页
-    setTimeout(() => {
-      uni.navigateTo({
-        url: '/pages/index/index'
-      })
-    }, 1000)
-
-  }catch (error: any) {
-    // 处理登录失败
-    console.error('手机号授权登录失败:', error)
-    uni.showToast({
-      title: error.message || '登录失败',
-      icon: 'none'
-    })
-  } finally {
-    uni.hideLoading()
-  }
-}
+    uni.redirectTo({ url: '/pages/login/password-login' })
+  } catch {}
+})
 
 // 密码登录
 const passwordLogin = () => {
@@ -189,55 +45,60 @@ const passwordLogin = () => {
     url: '/pages/login/password-login'
   })
 }
-
-// 手机验证码登录
-const phoneLogin = () => {
-  uni.navigateTo({
-    url: '/pages/login/phone-login'
-  })
-}
-
-// 邮箱验证码登录
-const emailLogin = () => {
-  uni.navigateTo({
-    url: '/pages/login/email-login'
-  })
-}
 </script>
 
 <style scoped>
 .login-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 60rpx 40rpx;
+  background: #F3F4F6;
+  padding: 64rpx 36rpx 44rpx;
   box-sizing: border-box;
+  color: #111827;
+  font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-container::before {
+  content: "";
+  position: absolute;
+  top: -160rpx;
+  right: -220rpx;
+  width: 520rpx;
+  height: 520rpx;
+  background: rgba(37, 99, 235, 0.10);
+  transform: rotate(18deg);
+  border-radius: 120rpx;
 }
 
 .login-header {
-  text-align: center;
-  margin-bottom: 80rpx;
+  text-align: left;
+  margin-bottom: 44rpx;
+  position: relative;
 }
 
 .title {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: white;
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #111827;
   display: block;
-  margin-bottom: 20rpx;
+  margin-bottom: 10rpx;
 }
 
 .subtitle {
-  font-size: 28rpx;
-  color: rgba(255, 255, 255, 0.8);
+  font-size: 26rpx;
+  color: rgba(17, 24, 39, 0.68);
   display: block;
 }
 
 .login-options {
   background: white;
-  border-radius: 20rpx;
+  border-radius: 18rpx;
   overflow: hidden;
-  box-shadow: 0 20rpx 40rpx rgba(0, 0, 0, 0.1);
-  margin-bottom: 60rpx;
+  border: 2rpx solid rgba(17, 24, 39, 0.10);
+  box-shadow: 0 14rpx 36rpx rgba(17, 24, 39, 0.08);
+  margin-bottom: 28rpx;
+  position: relative;
 }
 
 .login-option {
@@ -253,7 +114,7 @@ const emailLogin = () => {
 }
 
 .login-option:active {
-  background-color: #f8f9fa;
+  background-color: #F9FAFB;
 }
 
 .login-option-button {
@@ -276,14 +137,19 @@ const emailLogin = () => {
 }
 
 .login-option-button:active {
-  background-color: #f8f9fa;
+  background-color: #F9FAFB;
 }
 
 .option-icon {
-  font-size: 48rpx;
   margin-right: 30rpx;
-  width: 80rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
+  background: rgba(17, 24, 39, 0.04);
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .option-content {
@@ -295,13 +161,13 @@ const emailLogin = () => {
 
 .option-title {
   font-size: 32rpx;
-  font-weight: bold;
-  color: #333;
+  font-weight: 800;
+  color: #111827;
 }
 
 .option-desc {
   font-size: 26rpx;
-  color: #666;
+  color: rgba(17, 24, 39, 0.62);
   line-height: 1.4;
 }
 
@@ -314,12 +180,12 @@ const emailLogin = () => {
 .footer-text {
   text-align: center;
   font-size: 24rpx;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(17, 24, 39, 0.60);
   line-height: 1.6;
 }
 
 .link-text {
-  color: white;
+  color: #2563EB;
   text-decoration: underline;
 }
 </style>

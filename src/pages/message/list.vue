@@ -43,6 +43,7 @@
 import { ref, onMounted } from 'vue'
 import { getConversations } from '../../utils/messages'
 import { navigateTo } from '../../utils'
+import { requireNonGuest } from '../../utils/cloudbase'
 
 const loading = ref(true)
 const conversations = ref<any[]>([])
@@ -83,8 +84,13 @@ const goToChat = (userId: string, nickname: string) => {
   navigateTo(`/pages/message/chat?userId=${userId}&nickname=${encodeURIComponent(nickname)}`)
 }
 
-onMounted(() => {
-  loadConversations()
+onMounted(async () => {
+  try {
+    await requireNonGuest()
+    await loadConversations()
+  } catch {
+    return
+  }
 })
 </script>
 

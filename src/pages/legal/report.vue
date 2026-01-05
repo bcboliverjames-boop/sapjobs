@@ -5,6 +5,31 @@
       <text class="meta">用于举报虚假需求、骚扰私信、违法违规内容等</text>
 
       <view class="section">
+        <text class="h2">在线提交</text>
+
+        <view class="field">
+          <text class="label">举报类型</text>
+          <picker mode="selector" :range="categoryOptions" :value="categoryIndex" @change="onCategoryPick">
+            <view class="picker">{{ categoryOptions[categoryIndex] }}</view>
+          </picker>
+        </view>
+
+        <view class="field">
+          <text class="label">具体说明</text>
+          <textarea class="textarea" v-model="description" auto-height placeholder="请描述问题、上下文、证据等" />
+        </view>
+
+        <view class="field">
+          <text class="label">联系方式（可选）</text>
+          <input class="input" v-model="contact" placeholder="邮箱/微信/手机号（可选）" />
+        </view>
+
+        <button class="btn" :disabled="submitting" @click="submitReport">
+          {{ submitting ? '提交中...' : '提交举报' }}
+        </button>
+      </view>
+
+      <view class="section">
         <text class="h2">如何举报</text>
         <text class="p">你可以通过“联系我们”页提供的邮箱（{{ CONTACT_EMAIL }}）进行举报。为提高处理效率，建议在邮件中包含以下信息：</text>
         <view class="list">
@@ -50,6 +75,8 @@
 import { CONTACT_EMAIL } from '../../config/site'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { app, requireNonGuest } from '../../utils/cloudbase'
+import { getOrCreateUserProfile } from '../../utils/user'
 
 const goToContact = () => {
   uni.navigateTo({
@@ -59,6 +86,12 @@ const goToContact = () => {
 
 const demandId = ref('')
 const pageHref = ref('')
+
+const categoryOptions = ['虚假/诈骗', '骚扰', '违法违规', '侵权', '其他']
+const categoryIndex = ref(0)
+const description = ref('')
+const contact = ref('')
+const submitting = ref(false)
 
 onLoad((options) => {
   const id = (options && (options as any).demandId) as string | undefined
@@ -74,6 +107,49 @@ onLoad((options) => {
   pageHref.value = window.location.href
   // #endif
 })
+
+const onCategoryPick = (e: any) => {
+  const idx = Number((e && e.detail && e.detail.value) || 0)
+  categoryIndex.value = Number.isFinite(idx) ? idx : 0
+}
+
+const submitReport = async () => {
+  if (submitting.value) return
+  const desc = String(description.value || '').trim()
+  if (!desc) {
+    uni.showToast({ title: '请填写具体说明', icon: 'none' })
+    return
+  }
+
+  submitting.value = true
+  try {
+    await requireNonGuest()
+    const profile = await getOrCreateUserProfile()
+    const db = app.database()
+
+    await db.collection('ugc_reports').add({
+      category: categoryOptions[categoryIndex.value] || '其他',
+      description: desc,
+      contact: String(contact.value || '').trim(),
+      target_type: 'demand',
+      target_id: String(demandId.value || '').trim(),
+      page_url: String(pageHref.value || '').trim(),
+      reporter_user_id: String(profile.uid || '').trim(),
+      reporter_nickname: String(profile.nickname || '').trim(),
+      status: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+
+    description.value = ''
+    contact.value = ''
+    uni.showToast({ title: '已提交', icon: 'none' })
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || '提交失败', icon: 'none' })
+  } finally {
+    submitting.value = false
+  }
+}
 
 const reportTemplate = computed(() => {
   const lines: string[] = []
@@ -156,6 +232,46 @@ const sendEmail = () => {
 
 .section {
   margin-top: 22rpx;
+}
+
+.field {
+  margin-top: 14rpx;
+}
+
+.label {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 800;
+  margin-bottom: 10rpx;
+  color: rgba(17, 24, 39, 0.85);
+}
+
+.input {
+  width: 100%;
+  padding: 16rpx;
+  border-radius: 18rpx;
+  border: 2rpx solid rgba(17, 24, 39, 0.08);
+  background: #FFFFFF;
+  font-size: 24rpx;
+}
+
+.textarea {
+  width: 100%;
+  padding: 16rpx;
+  border-radius: 18rpx;
+  border: 2rpx solid rgba(17, 24, 39, 0.08);
+  background: #FFFFFF;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+
+.picker {
+  width: 100%;
+  padding: 16rpx;
+  border-radius: 18rpx;
+  border: 2rpx solid rgba(17, 24, 39, 0.08);
+  background: #FFFFFF;
+  font-size: 24rpx;
 }
 
 .h2 {
