@@ -1,47 +1,93 @@
-import { app, ensureLogin } from './cloudbase'
+import { requireNonGuest } from './cloudbase'
 import { getOrCreateUserProfile } from './user'
 
-async function callFn<T = any>(name: string, data: Record<string, any>): Promise<T> {
-  await ensureLogin()
-  const r: any = await app.callFunction({
-    name,
-    data,
+const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function requestJson<T = any>(opts: {
+  url: string
+  method?: 'GET' | 'POST'
+  data?: any
+  header?: any
+}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const storedToken = (() => {
+      try {
+        return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+      } catch {
+        return ''
+      }
+    })()
+
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
   })
-
-  const result = r && r.result
-  if (result !== undefined && result !== null) return result as T
-
-  const err = String((r && (r.error || r.errMsg || r.message)) || '').trim()
-  if (err) {
-    return { success: false, error: err } as any as T
-  }
-
-  return { success: false, error: 'CALL_FUNCTION_FAILED' } as any as T
 }
 
 export async function ugcCommentAdd(params: { demand_id: string; content: string }) {
-  return callFn('ugc', {
-    action: 'comment_add',
-    demand_id: params.demand_id,
-    content: params.content,
+  await requireNonGuest()
+  const profile = await getOrCreateUserProfile()
+  return requestJson({
+    url: `${API_BASE}/ugc`,
+    method: 'POST',
+    data: {
+      action: 'comment_add',
+      demandId: params.demand_id,
+      content: params.content,
+    },
+    header: {
+      'x-uid': String(profile.uid || ''),
+      'x-nickname': String(profile.nickname || ''),
+    },
   })
 }
 
 export async function ugcReplyAdd(params: { demand_id: string; comment_id: string; content: string }) {
-  return callFn('ugc', {
-    action: 'reply_add',
-    demand_id: params.demand_id,
-    comment_id: params.comment_id,
-    content: params.content,
+  await requireNonGuest()
+  const profile = await getOrCreateUserProfile()
+  return requestJson({
+    url: `${API_BASE}/ugc`,
+    method: 'POST',
+    data: {
+      action: 'reply_add',
+      demandId: params.demand_id,
+      commentId: params.comment_id,
+      content: params.content,
+    },
+    header: {
+      'x-uid': String(profile.uid || ''),
+      'x-nickname': String(profile.nickname || ''),
+    },
   })
 }
 
 export async function ugcReactionToggle(params: { demand_id: string; comment_id: string; field: 'likes' | 'dislikes' }) {
-  return callFn('ugc', {
-    action: 'reaction_toggle',
-    demand_id: params.demand_id,
-    comment_id: params.comment_id,
-    field: params.field,
+  await requireNonGuest()
+  const profile = await getOrCreateUserProfile()
+  return requestJson({
+    url: `${API_BASE}/ugc`,
+    method: 'POST',
+    data: {
+      action: 'reaction_toggle',
+      demandId: params.demand_id,
+      commentId: params.comment_id,
+      reaction: params.field === 'likes' ? 'like' : 'dislike',
+    },
+    header: {
+      'x-uid': String(profile.uid || ''),
+      'x-nickname': String(profile.nickname || ''),
+    },
   })
 }
 
@@ -50,12 +96,20 @@ export async function unlockContact(params: {
   target_provider_user_id: string
   target_raw_id?: string
 }) {
-  await ensureLogin()
+  await requireNonGuest()
   const profile = await getOrCreateUserProfile()
+
+  const token = (() => {
+    try {
+      return String(uni.getStorageSync('sapboss_api_token') || '').trim()
+    } catch {
+      return ''
+    }
+  })()
 
   return new Promise((resolve, reject) => {
     uni.request({
-      url: 'https://api.sapboss.com/contact_unlock',
+      url: `${API_BASE}/contact_unlock`,
       method: 'POST',
       data: {
         action: 'unlock',
@@ -67,13 +121,10 @@ export async function unlockContact(params: {
         'Content-Type': 'application/json',
         'x-uid': String(profile.uid || ''),
         'x-nickname': String(profile.nickname || ''),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      success: (res) => {
-        resolve((res as any)?.data)
-      },
-      fail: (err) => {
-        reject(err)
-      },
+      success: (res) => resolve((res as any)?.data),
+      fail: (err) => reject(err),
     })
   })
 }
