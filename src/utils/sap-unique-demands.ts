@@ -1,5 +1,3 @@
-import { app } from './cloudbase'
-
 export type SapUniqueDemandDoc = {
   _id?: string
   local_id?: number
@@ -27,6 +25,35 @@ export type SapUniqueDemandDoc = {
 
 export const UNIQUE_DEMANDS_COLLECTION = 'sap_unique_demands'
 
+const UNIQUE_API_BASE =
+  (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
+
+function buildQueryString(params: Record<string, string>): string {
+  const pairs: string[] = []
+  Object.keys(params).forEach((k) => {
+    const v = params[k]
+    if (v === undefined || v === null) return
+    pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+  })
+  return pairs.join('&')
+}
+
 function toNumberOrNull(v: any): number | null {
   if (v === null || v === undefined) return null
   const n = Number(v)
@@ -39,19 +66,25 @@ export async function fetchUniqueDemandsCountByTimeRange(opts: {
   field?: 'message_time_ts' | 'created_time_ts' | 'last_updated_time_ts' | 'updated_at_ts'
   onlyValid?: boolean
 }): Promise<number> {
-  const db = app.database()
-  const cmd = db.command
-
   const field = opts.field || 'created_time_ts'
 
-  const where: any = {
-    [field]: cmd.gte(opts.startTs).and(cmd.lt(opts.endTs as any)) as any,
+  const base = String(UNIQUE_API_BASE).replace(/\/+$/, '')
+  const qs = buildQueryString({
+    startTs: String(opts.startTs),
+    endTs: String(opts.endTs),
+    field,
+    onlyValid: opts.onlyValid ? '1' : '0',
+  })
+
+  const resp: any = await requestJson({
+    url: `${base}/unique_demands/count?${qs}`,
+    method: 'GET',
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'UNIQUE_DEMANDS_COUNT_FAILED')
   }
-
-  if (opts.onlyValid) where.demand_type = 'valid'
-
-  const r = await db.collection(UNIQUE_DEMANDS_COLLECTION).where(where).count()
-  return toNumberOrNull((r as any).total) || 0
+  return toNumberOrNull(resp.count) || 0
 }
 
 export async function fetchUniqueDemandsListByTimeRange(opts: {
@@ -62,27 +95,31 @@ export async function fetchUniqueDemandsListByTimeRange(opts: {
   limit?: number
   order?: 'asc' | 'desc'
 }): Promise<SapUniqueDemandDoc[]> {
-  const db = app.database()
-  const cmd = db.command
-
   const field = opts.field || 'created_time_ts'
   const limit = Math.max(1, Math.min(200, opts.limit || 20))
   const order = opts.order || 'desc'
 
-  const where: any = {
-    [field]: cmd.gte(opts.startTs).and(cmd.lt(opts.endTs as any)) as any,
+  const base = String(UNIQUE_API_BASE).replace(/\/+$/, '')
+  const qs = buildQueryString({
+    startTs: String(opts.startTs),
+    endTs: String(opts.endTs),
+    field,
+    order,
+    onlyValid: opts.onlyValid ? '1' : '0',
+    limit: String(limit),
+    offset: '0',
+  })
+
+  const resp: any = await requestJson({
+    url: `${base}/unique_demands/range?${qs}`,
+    method: 'GET',
+  })
+
+  if (!resp || !resp.ok || !Array.isArray(resp.demands)) {
+    throw new Error((resp && resp.error) || 'UNIQUE_DEMANDS_RANGE_FAILED')
   }
 
-  if (opts.onlyValid) where.demand_type = 'valid'
-
-  const r = await db
-    .collection(UNIQUE_DEMANDS_COLLECTION)
-    .where(where)
-    .orderBy(field, order)
-    .limit(limit)
-    .get()
-
-  return ((r as any).data || []) as SapUniqueDemandDoc[]
+  return resp.demands as SapUniqueDemandDoc[]
 }
 
 export async function fetchAllUniqueDemandsByTimeRange(opts: {
@@ -94,36 +131,37 @@ export async function fetchAllUniqueDemandsByTimeRange(opts: {
   pageSize?: number
   max?: number
 }): Promise<SapUniqueDemandDoc[]> {
-  const db = app.database()
-  const cmd = db.command
-
   const field = opts.field || 'created_time_ts'
   const order = opts.order || 'desc'
   const pageSize = Math.max(1, Math.min(100, opts.pageSize || 100))
   const max = Math.max(1, opts.max || 2000)
 
-  const where: any = {
-    [field]: cmd.gte(opts.startTs).and(cmd.lt(opts.endTs as any)) as any,
-  }
-  if (opts.onlyValid) where.demand_type = 'valid'
+  const base = String(UNIQUE_API_BASE).replace(/\/+$/, '')
 
   const all: SapUniqueDemandDoc[] = []
-  let skip = 0
+  let offset = 0
   while (all.length < max) {
-    const r = await db
-      .collection(UNIQUE_DEMANDS_COLLECTION)
-      .where(where)
-      .orderBy(field, order)
-      .skip(skip)
-      .limit(pageSize)
-      .get()
+    const limit = Math.min(pageSize, max - all.length)
+    const qs = buildQueryString({
+      startTs: String(opts.startTs),
+      endTs: String(opts.endTs),
+      field,
+      order,
+      onlyValid: opts.onlyValid ? '1' : '0',
+      limit: String(limit),
+      offset: String(offset),
+    })
 
-    const batch = ((r as any).data || []) as SapUniqueDemandDoc[]
+    const resp: any = await requestJson({
+      url: `${base}/unique_demands/range?${qs}`,
+      method: 'GET',
+    })
+
+    const batch = resp && Array.isArray(resp.demands) ? (resp.demands as SapUniqueDemandDoc[]) : []
     if (!batch.length) break
-
     all.push(...batch)
-    if (batch.length < pageSize) break
-    skip += batch.length
+    if (batch.length < limit) break
+    offset += batch.length
   }
 
   return all.slice(0, max)
@@ -136,37 +174,54 @@ export async function fetchAllUniqueDemands(opts?: {
   pageSize?: number
   max?: number
 }): Promise<SapUniqueDemandDoc[]> {
-  const db = app.database()
-
   const orderBy = opts?.orderBy || 'local_id'
   const order = opts?.order || 'desc'
   const pageSize = Math.max(1, Math.min(100, opts?.pageSize || 100))
   const max = Math.max(1, opts?.max || 2000)
 
-  const where: any = {}
-  if (opts?.onlyValid) where.demand_type = 'valid'
+  const base = String(UNIQUE_API_BASE).replace(/\/+$/, '')
 
   const all: SapUniqueDemandDoc[] = []
-  let skip = 0
+  let offset = 0
   while (all.length < max) {
-    let q: any = db.collection(UNIQUE_DEMANDS_COLLECTION)
-    if (Object.keys(where).length) q = q.where(where)
+    const limit = Math.min(pageSize, max - all.length)
+    const qs = buildQueryString({
+      orderBy,
+      order,
+      onlyValid: opts?.onlyValid ? '1' : '0',
+      limit: String(limit),
+      offset: String(offset),
+    })
 
-    const r = await q.orderBy(orderBy, order).skip(skip).limit(pageSize).get()
-    const batch = ((r as any).data || []) as SapUniqueDemandDoc[]
+    const resp: any = await requestJson({
+      url: `${base}/unique_demands/all?${qs}`,
+      method: 'GET',
+    })
+
+    const batch = resp && Array.isArray(resp.demands) ? (resp.demands as SapUniqueDemandDoc[]) : []
     if (!batch.length) break
     all.push(...batch)
-    if (batch.length < pageSize) break
-    skip += batch.length
+    if (batch.length < limit) break
+    offset += batch.length
   }
+
   return all.slice(0, max)
 }
 
 export async function fetchUniqueDemandById(id: string): Promise<SapUniqueDemandDoc | null> {
   const docId = String(id || '').trim()
   if (!docId) return null
-  const db = app.database()
-  const r = await db.collection(UNIQUE_DEMANDS_COLLECTION).doc(docId).get()
-  const doc = (r as any).data && (r as any).data[0]
-  return doc ? (doc as SapUniqueDemandDoc) : null
+
+  const base = String(UNIQUE_API_BASE).replace(/\/+$/, '')
+  const resp: any = await requestJson({
+    url: `${base}/unique_demands/${encodeURIComponent(docId)}`,
+    method: 'GET',
+  })
+
+  if (!resp) return null
+  if (!resp.ok) {
+    if (String(resp.error || '').trim() === 'NOT_FOUND') return null
+    throw new Error(resp.error || 'UNIQUE_DEMAND_GET_FAILED')
+  }
+  return (resp.demand || null) as SapUniqueDemandDoc | null
 }

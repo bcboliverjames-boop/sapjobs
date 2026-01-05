@@ -9,8 +9,10 @@
     "migrate:sqlite-users": "node migrate_sqlite_providers_cache_to_pg_user_profiles.cjs"
   },
   "dependencies": {
+    "@cloudbase/node-sdk": "^2.7.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
     "pg": "^8.12.0",
     "sql.js": "^1.13.0"
   }

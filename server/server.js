@@ -1,9 +1,9 @@
 const express = require('express')
 const cors = require('cors')
 const { Pool } = require('pg')
-const https = require('https')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
+const tcb = require('@cloudbase/node-sdk')
 
 const app = express()
 
@@ -12,7 +12,7 @@ app.use(
   cors({
     origin: true,
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-nickname'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-uid', 'x-nickname', 'x-ingest-secret'],
     methods: ['GET', 'POST', 'OPTIONS'],
   }),
 )
@@ -28,7 +28,15 @@ const pool = new Pool({
 
 function getAuth(req) {
   const uid = String(req.header('x-uid') || '').trim()
-  const nickname = String(req.header('x-nickname') || '').trim()
+  const nicknameRaw = String(req.header('x-nickname') || '').trim()
+  const nickname = (() => {
+    if (!nicknameRaw) return ''
+    try {
+      return decodeURIComponent(nicknameRaw)
+    } catch {
+      return nicknameRaw
+    }
+  })()
   return { uid, nickname }
 }
 
@@ -245,6 +253,301 @@ function envFlagOn(v) {
   return !!s && s !== '0' && s !== 'false' && s !== 'off' && s !== 'no'
 }
 
+function md5Hex(s) {
+  return crypto.createHash('md5').update(String(s || ''), 'utf8').digest('hex')
+}
+
+function getServiceRole() {
+  const r = String(process.env.SERVICE_ROLE || '').trim().toLowerCase()
+  if (r === 'sapboss' || r === 'profile') return r
+  const p = Number(process.env.PORT)
+  if (Number.isFinite(p)) {
+    if (p === 3000) return 'sapboss'
+    if (p === 3001) return 'profile'
+  }
+  return 'sapboss'
+}
+
+function demandsFeatureEnabled() {
+  if (process.env.ENABLE_DEMANDS !== undefined) {
+    return envFlagOn(process.env.ENABLE_DEMANDS)
+  }
+  return getServiceRole() === 'sapboss'
+}
+
+function getDefaultSimilarityConfig() {
+  return {
+    similarity_enabled: process.env.SIMILARITY_ENABLED ? envFlagOn(process.env.SIMILARITY_ENABLED) : true,
+    similarity_rule: normalizeRule(process.env.SIMILARITY_RULE || 'hybrid'),
+    similarity_threshold: normalizeThreshold(process.env.SIMILARITY_THRESHOLD || 0.86),
+  }
+}
+
+function getCloudbaseEnvId() {
+  return String(process.env.TCB_ENV_ID || process.env.CLOUDBASE_ENV_ID || '').trim()
+}
+
+function getCloudbaseSecretId() {
+  return String(process.env.CLOUDBASE_SECRET_ID || process.env.TCB_SECRET_ID || '').trim()
+}
+
+function getCloudbaseSecretKey() {
+  return String(process.env.CLOUDBASE_SECRET_KEY || process.env.TCB_SECRET_KEY || '').trim()
+}
+
+let cloudDb = null
+
+function getCloudDbOrThrow() {
+  if (cloudDb) return cloudDb
+
+  const envId = getCloudbaseEnvId()
+  const secretId = getCloudbaseSecretId()
+  const secretKey = getCloudbaseSecretKey()
+
+  if (!envId) throw new Error('CLOUDBASE_ENV_ID_NOT_CONFIGURED')
+  if (!secretId || !secretKey) throw new Error('CLOUDBASE_SECRET_NOT_CONFIGURED')
+
+  const cloudApp = tcb.init({
+    env: envId,
+    secretId,
+    secretKey,
+  })
+  cloudDb = cloudApp.database()
+  return cloudDb
+}
+
+async function fetchAdminConfigFromCloudbase(db) {
+  try {
+    const r = await db.collection('sap_admin_config').where({ config_key: 'global' }).limit(1).get()
+    const doc = r && r.data && r.data[0]
+    if (doc) {
+      return {
+        similarity_enabled: doc.similarity_enabled !== false,
+        similarity_rule: normalizeRule(doc.similarity_rule || 'hybrid'),
+        similarity_threshold: normalizeThreshold(doc.similarity_threshold || 0.86),
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return getDefaultSimilarityConfig()
+}
+
+async function fetchUniqueCandidatesCloudbase(db, limit) {
+  const capped = Math.max(1, Math.min(400, Number(limit || 200)))
+  const col = db.collection('sap_unique_demands')
+  const attempts = ['last_updated_time_ts', 'updated_at_ts', 'created_time_ts', 'message_time_ts', 'local_id']
+
+  for (const f of attempts) {
+    try {
+      const r = await col.orderBy(f, 'desc').limit(capped).get()
+      return ((r && r.data) || [])
+    } catch {
+      // try next
+    }
+  }
+  const r = await col.limit(capped).get()
+  return ((r && r.data) || [])
+}
+
+function pickBestUniqueMatchCloudbase(opts) {
+  const { incomingRawText, incomingCategory, candidates, rule, threshold } = opts
+
+  let best = null
+  let bestCat = -1
+  let bestText = -1
+
+  for (const u of candidates || []) {
+    const uText = String((u && u.raw_text) || '').trim()
+    const uCat = getCategoryLite(u)
+    const catSim = calculateCategorySimilarity(incomingCategory, uCat)
+    const textSim = calculateTextSimilarity(incomingRawText, uText)
+
+    let matched = false
+    if (rule === 'category') matched = catSim >= threshold
+    else if (rule === 'text') matched = textSim >= threshold
+    else matched = catSim >= threshold || textSim >= threshold
+
+    if (!matched) continue
+
+    if (catSim > bestCat || (catSim === bestCat && textSim > bestText)) {
+      best = u
+      bestCat = catSim
+      bestText = textSim
+    }
+  }
+
+  return { best, bestCat, bestText }
+}
+
+function toNumberOr(v, fallback) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
+function normalizeRule(v) {
+  const s = String(v || '').trim()
+  if (s === 'text' || s === 'category' || s === 'hybrid') return s
+  return 'hybrid'
+}
+
+function normalizeThreshold(v) {
+  const n = toNumberOr(v, 0.86)
+  return Math.max(0.5, Math.min(0.99, n))
+}
+
+function normalizeTextForSim(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}]/gu, '')
+    .trim()
+}
+
+function lcsLength(a, b) {
+  const m = a.length
+  const n = b.length
+  const dp = new Array(n + 1).fill(0)
+  const prev = new Array(n + 1).fill(0)
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      if (a[i - 1] === b[j - 1]) dp[j] = prev[j - 1] + 1
+      else dp[j] = Math.max(prev[j], dp[j - 1])
+    }
+    for (let j = 0; j <= n; j += 1) prev[j] = dp[j]
+  }
+  return dp[n]
+}
+
+function calculateTextSimilarity(a, b) {
+  const s1 = normalizeTextForSim(a)
+  const s2 = normalizeTextForSim(b)
+  if (!s1 || !s2) return 0
+  if (s1 === s2) return 1
+  if (s1.includes(s2) || s2.includes(s1)) {
+    const longer = s1.length > s2.length ? s1 : s2
+    const shorter = s1.length > s2.length ? s2 : s1
+    return shorter.length / longer.length
+  }
+  const l = lcsLength(s1, s2)
+  const denom = Math.max(s1.length, s2.length)
+  if (!denom) return 0
+  return l / denom
+}
+
+function parseAttributesJson(v) {
+  if (!v) return null
+  if (typeof v === 'object') return v
+  const s = String(v || '').trim()
+  if (!s) return null
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}
+
+function normStr(v) {
+  return String(v || '').trim()
+}
+
+function normCity(v) {
+  const s = normStr(v)
+  if (!s) return ''
+  if (s === '在家') return '远程'
+  return s
+}
+
+function normModule(m) {
+  const s = String(m || '').trim().toUpperCase().replace(/\s+/g, '')
+  const t = s.replace(/\\/g, '/').replace(/\|/g, '/').replace(/／/g, '/').replace(/＼/g, '/')
+  if (t === 'FI/CO' || t === 'FICO') return 'FICO'
+  return t
+}
+
+function overlapRatio(a, b) {
+  const sa = new Set((Array.isArray(a) ? a : []).map(normModule).filter(Boolean))
+  const sb = new Set((Array.isArray(b) ? b : []).map(normModule).filter(Boolean))
+  if (!sa.size || !sb.size) return 0
+  let inter = 0
+  for (const x of sa) if (sb.has(x)) inter += 1
+  const denom = Math.min(sa.size, sb.size)
+  if (!denom) return 0
+  return inter / denom
+}
+
+function eqScore(a, b) {
+  if (!a || !b) return 0
+  return a === b ? 1 : 0
+}
+
+function getCategoryLite(doc) {
+  const attrs = parseAttributesJson(doc && (doc.attributes_json || doc.attributes)) || {}
+  return {
+    module_codes: Array.isArray(doc && doc.module_codes) ? doc.module_codes : attrs.module_codes,
+    city: normStr(doc && (doc.city || attrs.city)),
+    is_remote: doc && Object.prototype.hasOwnProperty.call(doc, 'is_remote') ? doc.is_remote : attrs.is_remote,
+    duration_text: normStr(doc && (doc.duration_text || attrs.duration_text)),
+    years_text: normStr(doc && (doc.years_text || attrs.years_text)),
+    language_tag: normStr(doc && (doc.language_tag || attrs.language_tag)),
+    cooperation_mode: normStr(doc && (doc.cooperation_mode || attrs.cooperation_mode)),
+    work_mode: normStr(doc && (doc.work_mode || attrs.work_mode)),
+    consultant_level: normStr(doc && (doc.consultant_level || attrs.consultant_level)),
+    project_cycle: normStr(doc && (doc.project_cycle || attrs.project_cycle)),
+    time_requirement: normStr(doc && (doc.time_requirement || attrs.time_requirement)),
+  }
+}
+
+function calculateCategorySimilarity(a, b) {
+  if (!a || !b) return 0
+
+  const aMods = Array.isArray(a.module_codes) ? a.module_codes : []
+  const bMods = Array.isArray(b.module_codes) ? b.module_codes : []
+  const hasA = aMods.length > 0
+  const hasB = bMods.length > 0
+  if (hasA !== hasB) return 0
+  if (hasA && hasB) {
+    const modScore = overlapRatio(aMods, bMods)
+    if (modScore <= 0) return 0
+  }
+
+  const aCity = normCity(a.city)
+  const bCity = normCity(b.city)
+  if (aCity && bCity && aCity !== bCity) return 0
+
+  const weights = {
+    module: 3,
+    city: 2,
+    is_remote: 2,
+    cooperation_mode: 1,
+    work_mode: 1,
+    consultant_level: 1,
+    project_cycle: 1,
+    language_tag: 1,
+    time_requirement: 1,
+    duration_text: 1,
+    years_text: 1,
+  }
+
+  const total = Object.values(weights).reduce((s, x) => s + x, 0)
+  let score = 0
+
+  score += overlapRatio(aMods, bMods) * weights.module
+  score += eqScore(aCity, bCity) * weights.city
+  score += eqScore(String(a.is_remote ?? ''), String(b.is_remote ?? '')) * weights.is_remote
+  score += eqScore(a.cooperation_mode, b.cooperation_mode) * weights.cooperation_mode
+  score += eqScore(a.work_mode, b.work_mode) * weights.work_mode
+  score += eqScore(a.consultant_level, b.consultant_level) * weights.consultant_level
+  score += eqScore(a.project_cycle, b.project_cycle) * weights.project_cycle
+  score += eqScore(a.language_tag, b.language_tag) * weights.language_tag
+  score += eqScore(a.time_requirement, b.time_requirement) * weights.time_requirement
+  score += eqScore(a.duration_text, b.duration_text) * weights.duration_text
+  score += eqScore(a.years_text, b.years_text) * weights.years_text
+
+  return total > 0 ? score / total : 0
+}
+
 function requireJwtOnly(req, res) {
   const jwtUser = verifyJwtFromReq(req)
   if (jwtUser && jwtUser.uid) {
@@ -259,6 +562,534 @@ function requireWriteAuth(req, res) {
     return requireJwtOnly(req, res)
   }
   return requireUid(req, res)
+}
+
+function getAdminUidSet() {
+  const raw = String(process.env.ADMIN_UIDS || '').trim()
+  if (!raw) return new Set()
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => String(s || '').trim())
+      .filter(Boolean),
+  )
+}
+
+function requireAdminAuth(req, res) {
+  const auth = requireWriteAuth(req, res)
+  if (!auth) return null
+  const set = getAdminUidSet()
+  if (set.size === 0) {
+    res.status(403).json({ ok: false, error: 'ADMIN_UIDS_NOT_CONFIGURED' })
+    return null
+  }
+  if (!set.has(String(auth.uid || '').trim())) {
+    res.status(403).json({ ok: false, error: 'ADMIN_REQUIRED' })
+    return null
+  }
+  return auth
+}
+
+function requireIngestAuth(req, res) {
+  const ingestSecret = String(process.env.INGEST_SECRET || '').trim()
+  const provided = String(req.header('x-ingest-secret') || '').trim()
+  if (ingestSecret && provided && ingestSecret === provided) {
+    return { uid: '', nickname: '', ingestMode: 'secret' }
+  }
+  const auth = requireWriteAuth(req, res)
+  if (!auth) return null
+  return { ...auth, ingestMode: 'user' }
+}
+
+function pickDocIdLike(v) {
+  const s = String(v || '').trim()
+  return s ? s : ''
+}
+
+function sanitizeDemandPayload(input, fallbackAuth) {
+  const now = new Date()
+  const rawText = String((input && (input.raw_text || input.rawText || input.message_text || input.text)) || '').trim()
+  const moduleCodesRaw = input && (input.module_codes || input.modules)
+  const module_codes = Array.isArray(moduleCodesRaw)
+    ? moduleCodesRaw.map((x) => String(x || '').trim()).filter(Boolean)
+    : []
+
+  const provider_user_id = String((input && (input.provider_user_id || input.provider_id || input.uid)) || '').trim()
+  const provider_name = String((input && (input.provider_name || input.publisher_name || input.nickname)) || '').trim()
+
+  const payload = {
+    ...input,
+    raw_text: rawText,
+    module_codes,
+    provider_user_id: provider_user_id || (fallbackAuth && fallbackAuth.uid) || 'local_ingest',
+    provider_name: provider_name || (fallbackAuth && fallbackAuth.nickname) || '未知',
+    updatedAt: now,
+  }
+
+  if (!payload.createdAt) payload.createdAt = now
+
+  Object.keys(payload).forEach((k) => {
+    if (payload[k] === undefined) delete payload[k]
+  })
+
+  return payload
+}
+
+async function ensureDemandsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sap_demands (
+      id bigserial PRIMARY KEY,
+      demand_key text UNIQUE NOT NULL,
+      raw_text text NOT NULL,
+      module_codes text[] NOT NULL DEFAULT '{}',
+      module_labels text[] NOT NULL DEFAULT '{}',
+      city text,
+      duration_text text,
+      years_text text,
+      language text,
+      daily_rate text,
+      is_remote boolean,
+      cooperation_mode text,
+      work_mode text,
+      consultant_level text,
+      project_cycle text,
+      time_requirement text,
+      provider_name text,
+      provider_user_id text,
+      unique_demand_id text,
+      unique_override_by text,
+      unique_override_at timestamptz,
+      source text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_demand_id text`)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_override_by text`)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_override_at timestamptz`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_created_at_idx ON sap_demands(created_at DESC)`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_provider_user_idx ON sap_demands(provider_user_id)`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_unique_demand_idx ON sap_demands(unique_demand_id)`)
+}
+
+async function ensureUniqueDemandsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sap_unique_demands (
+      doc_id text PRIMARY KEY,
+      local_id bigint,
+      raw_text text,
+      tags_json text,
+      attributes_json text,
+      demand_type text,
+      richness_score integer,
+      created_time timestamptz,
+      message_time timestamptz,
+      updated_at timestamptz,
+      last_updated_time timestamptz,
+      created_time_ts bigint,
+      message_time_ts bigint,
+      updated_at_ts bigint,
+      last_updated_time_ts bigint,
+      synced_at timestamptz,
+      source text,
+      canonical_raw_id text,
+      canonical_set_by text,
+      canonical_set_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at_db timestamptz NOT NULL DEFAULT now()
+    )
+  `)
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS sap_unique_demands_created_ts_idx ON sap_unique_demands(created_time_ts DESC)`)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS sap_unique_demands_last_updated_ts_idx ON sap_unique_demands(last_updated_time_ts DESC)`,
+  )
+  await pool.query(`CREATE INDEX IF NOT EXISTS sap_unique_demands_type_idx ON sap_unique_demands(demand_type)`)
+}
+
+function mapUniqueDemandRow(row) {
+  if (!row) return null
+  return {
+    _id: row.doc_id,
+    local_id: row.local_id === null || row.local_id === undefined ? undefined : Number(row.local_id),
+    raw_text: row.raw_text || '',
+    tags_json: row.tags_json || '',
+    attributes_json: row.attributes_json || '',
+    demand_type: row.demand_type || '',
+    richness_score: row.richness_score === null || row.richness_score === undefined ? undefined : Number(row.richness_score),
+    created_time: row.created_time,
+    message_time: row.message_time,
+    updated_at: row.updated_at,
+    last_updated_time: row.last_updated_time,
+    created_time_ts: row.created_time_ts === null || row.created_time_ts === undefined ? null : Number(row.created_time_ts),
+    message_time_ts: row.message_time_ts === null || row.message_time_ts === undefined ? null : Number(row.message_time_ts),
+    updated_at_ts: row.updated_at_ts === null || row.updated_at_ts === undefined ? null : Number(row.updated_at_ts),
+    last_updated_time_ts:
+      row.last_updated_time_ts === null || row.last_updated_time_ts === undefined ? null : Number(row.last_updated_time_ts),
+    synced_at: row.synced_at,
+    source: row.source || '',
+    canonical_raw_id: row.canonical_raw_id || '',
+    canonical_set_by: row.canonical_set_by || '',
+    canonical_set_at: row.canonical_set_at,
+  }
+}
+
+function toBigIntOrNull(v) {
+  if (v === null || v === undefined) return null
+  const n = Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.trunc(n)
+}
+
+async function upsertUniqueDemand(docId, demand) {
+  await ensureUniqueDemandsTable()
+
+  const id = pickDocIdLike(docId)
+  const d = demand && typeof demand === 'object' ? demand : {}
+
+  const vals = [
+    id,
+    d.local_id === undefined ? null : toBigIntOrNull(d.local_id),
+    d.raw_text ? String(d.raw_text) : null,
+    d.tags_json ? String(d.tags_json) : null,
+    d.attributes_json ? String(d.attributes_json) : null,
+    d.demand_type ? String(d.demand_type) : null,
+    d.richness_score === undefined ? null : Number(d.richness_score),
+    d.created_time ? new Date(d.created_time) : null,
+    d.message_time ? new Date(d.message_time) : null,
+    d.updated_at ? new Date(d.updated_at) : null,
+    d.last_updated_time ? new Date(d.last_updated_time) : null,
+    d.created_time_ts === undefined ? null : toBigIntOrNull(d.created_time_ts),
+    d.message_time_ts === undefined ? null : toBigIntOrNull(d.message_time_ts),
+    d.updated_at_ts === undefined ? null : toBigIntOrNull(d.updated_at_ts),
+    d.last_updated_time_ts === undefined ? null : toBigIntOrNull(d.last_updated_time_ts),
+    d.synced_at ? new Date(d.synced_at) : null,
+    d.source ? String(d.source) : null,
+  ]
+
+  const r = await pool.query(
+    `
+    INSERT INTO sap_unique_demands (
+      doc_id, local_id, raw_text, tags_json, attributes_json,
+      demand_type, richness_score,
+      created_time, message_time, updated_at, last_updated_time,
+      created_time_ts, message_time_ts, updated_at_ts, last_updated_time_ts,
+      synced_at, source
+    )
+    VALUES (
+      $1, $2, $3, $4, $5,
+      $6, $7,
+      $8, $9, $10, $11,
+      $12, $13, $14, $15,
+      $16, $17
+    )
+    ON CONFLICT (doc_id) DO UPDATE SET
+      local_id = EXCLUDED.local_id,
+      raw_text = EXCLUDED.raw_text,
+      tags_json = EXCLUDED.tags_json,
+      attributes_json = EXCLUDED.attributes_json,
+      demand_type = EXCLUDED.demand_type,
+      richness_score = EXCLUDED.richness_score,
+      created_time = EXCLUDED.created_time,
+      message_time = EXCLUDED.message_time,
+      updated_at = EXCLUDED.updated_at,
+      last_updated_time = EXCLUDED.last_updated_time,
+      created_time_ts = EXCLUDED.created_time_ts,
+      message_time_ts = EXCLUDED.message_time_ts,
+      updated_at_ts = EXCLUDED.updated_at_ts,
+      last_updated_time_ts = EXCLUDED.last_updated_time_ts,
+      synced_at = EXCLUDED.synced_at,
+      source = EXCLUDED.source,
+      updated_at_db = now()
+    RETURNING *
+    `,
+    vals,
+  )
+
+  return r && r.rows && r.rows[0] ? r.rows[0] : null
+}
+
+function normalizeDemandKey(rawText) {
+  return md5Hex(normalizeTextForSim(rawText))
+}
+
+function mapDemandRow(row) {
+  if (!row) return null
+  return {
+    id: String(row.id),
+    raw_text: row.raw_text || '',
+    module_codes: Array.isArray(row.module_codes) ? row.module_codes : [],
+    module_labels: Array.isArray(row.module_labels) ? row.module_labels : [],
+    city: row.city || '',
+    duration_text: row.duration_text || '',
+    years_text: row.years_text || '',
+    language: row.language || '',
+    daily_rate: row.daily_rate || '',
+    is_remote: row.is_remote,
+    cooperation_mode: row.cooperation_mode || '',
+    work_mode: row.work_mode || '',
+    consultant_level: row.consultant_level || '',
+    project_cycle: row.project_cycle || '',
+    time_requirement: row.time_requirement || '',
+    provider_name: row.provider_name || '未知',
+    provider_user_id: row.provider_user_id || undefined,
+    unique_demand_id: row.unique_demand_id || '',
+    unique_override_by: row.unique_override_by || '',
+    unique_override_at: row.unique_override_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function mapDemandDocLike(row) {
+  const mapped = mapDemandRow(row)
+  if (!mapped) return null
+  return { _id: String(mapped.id || ''), ...mapped }
+}
+
+async function upsertDemand(payload, source) {
+  await ensureDemandsTable()
+  const rawText = String(payload && payload.raw_text || '').trim()
+  const demandKey = normalizeDemandKey(rawText)
+  const moduleCodes = Array.isArray(payload && payload.module_codes) ? payload.module_codes : []
+  const moduleLabels = Array.isArray(payload && payload.module_labels) ? payload.module_labels : []
+
+  const providerName = String(payload && payload.provider_name || '').trim()
+  const providerUid = String(payload && payload.provider_user_id || '').trim()
+
+  const vals = [
+    demandKey,
+    rawText,
+    moduleCodes,
+    moduleLabels,
+    payload.city ? String(payload.city) : null,
+    payload.duration_text ? String(payload.duration_text) : null,
+    payload.years_text ? String(payload.years_text) : null,
+    payload.language ? String(payload.language) : null,
+    payload.daily_rate ? String(payload.daily_rate) : null,
+    typeof payload.is_remote === 'boolean' ? payload.is_remote : null,
+    payload.cooperation_mode ? String(payload.cooperation_mode) : null,
+    payload.work_mode ? String(payload.work_mode) : null,
+    payload.consultant_level ? String(payload.consultant_level) : null,
+    payload.project_cycle ? String(payload.project_cycle) : null,
+    payload.time_requirement ? String(payload.time_requirement) : null,
+    providerName || null,
+    providerUid || null,
+    source || null,
+  ]
+
+  const r = await pool.query(
+    `
+    INSERT INTO sap_demands (
+      demand_key, raw_text, module_codes, module_labels,
+      city, duration_text, years_text, language, daily_rate,
+      is_remote, cooperation_mode, work_mode, consultant_level, project_cycle, time_requirement,
+      provider_name, provider_user_id, source
+    )
+    VALUES (
+      $1, $2, $3::text[], $4::text[],
+      $5, $6, $7, $8, $9,
+      $10, $11, $12, $13, $14, $15,
+      $16, $17, $18
+    )
+    ON CONFLICT (demand_key) DO UPDATE SET
+      raw_text = EXCLUDED.raw_text,
+      module_codes = EXCLUDED.module_codes,
+      module_labels = EXCLUDED.module_labels,
+      city = EXCLUDED.city,
+      duration_text = EXCLUDED.duration_text,
+      years_text = EXCLUDED.years_text,
+      language = EXCLUDED.language,
+      daily_rate = EXCLUDED.daily_rate,
+      is_remote = EXCLUDED.is_remote,
+      cooperation_mode = EXCLUDED.cooperation_mode,
+      work_mode = EXCLUDED.work_mode,
+      consultant_level = EXCLUDED.consultant_level,
+      project_cycle = EXCLUDED.project_cycle,
+      time_requirement = EXCLUDED.time_requirement,
+      provider_name = EXCLUDED.provider_name,
+      provider_user_id = EXCLUDED.provider_user_id,
+      source = EXCLUDED.source,
+      updated_at = now()
+    RETURNING *
+    `,
+    vals,
+  )
+  return r && r.rows && r.rows[0] ? r.rows[0] : null
+}
+
+async function handleDemandIngestPg(req, res) {
+  const auth = requireIngestAuth(req, res)
+  if (!auth) return
+
+  const body = (req && req.body) || {}
+  const input = body.demand || body.data || body
+
+  const rawDocId = pickDocIdLike(body.raw_id || body.doc_id || input._id || input.id || input.doc_id)
+  const payload = sanitizeDemandPayload(input, auth)
+  if (!payload.raw_text) {
+    res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
+    return
+  }
+
+  try {
+    const source = auth.ingestMode === 'secret' ? 'ingest_secret' : 'web_user'
+    const saved = await upsertDemand(payload, source)
+    res.json({
+      ok: true,
+      raw_id: rawDocId || '',
+      demand: mapDemandRow(saved),
+    })
+  } catch (e) {
+    console.error('demands_ingest_pg_write_failed', e)
+    res.status(500).json({ ok: false, error: 'PG_WRITE_FAILED' })
+  }
+}
+
+async function handleDemandIngestCloud(req, res) {
+  const auth = requireIngestAuth(req, res)
+  if (!auth) return
+
+  const body = (req && req.body) || {}
+  const input = body.demand || body.data || body
+  const rawDocId = pickDocIdLike(body.raw_id || body.doc_id || input._id || input.id || input.doc_id)
+  const payload = sanitizeDemandPayload(input, auth)
+  if (!payload.raw_text) {
+    res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
+    return
+  }
+
+  let db
+  try {
+    db = getCloudDbOrThrow()
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String((e && e.message) || e || 'CLOUDBASE_INIT_FAILED') })
+    return
+  }
+
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const nowTs = now.getTime()
+
+  const rawCol = db.collection('sap_demands_raw')
+  let savedRawId = ''
+  try {
+    if (rawDocId) {
+      await rawCol.doc(rawDocId).set(payload)
+      savedRawId = rawDocId
+    } else {
+      const r = await rawCol.add(payload)
+      savedRawId = String((r && (r.id || r._id)) || '').trim()
+    }
+  } catch (e) {
+    console.error('demands_ingest_raw_write_failed', e)
+    res.status(500).json({ ok: false, error: 'RAW_WRITE_FAILED' })
+    return
+  }
+
+  let cfg
+  try {
+    cfg = await fetchAdminConfigFromCloudbase(db)
+  } catch {
+    cfg = getDefaultSimilarityConfig()
+  }
+
+  const enabled = cfg && cfg.similarity_enabled !== false
+  const rule = normalizeRule(cfg && cfg.similarity_rule)
+  const threshold = normalizeThreshold(cfg && cfg.similarity_threshold)
+
+  const incomingCategory = getCategoryLite(payload)
+  const candidates = enabled ? await fetchUniqueCandidatesCloudbase(db, 200) : []
+  const picked = enabled
+    ? pickBestUniqueMatchCloudbase({
+        incomingRawText: payload.raw_text,
+        incomingCategory,
+        candidates,
+        rule,
+        threshold,
+      })
+    : { best: null, bestCat: -1, bestText: -1 }
+
+  let uniqueId = String((picked.best && (picked.best._id || picked.best.id)) || '').trim()
+  const uniqueCol = db.collection('sap_unique_demands')
+
+  if (!uniqueId) {
+    const digest = md5Hex(`${payload.raw_text}__${savedRawId}`)
+    uniqueId = `ud_${digest}`
+    const uniquePayload = {
+      raw_text: payload.raw_text,
+      tags_json: payload.tags_json,
+      attributes_json: payload.attributes_json,
+      publisher_name: payload.provider_name,
+      provider_id: payload.provider_user_id,
+      demand_type: 'valid',
+      canonical_raw_id: savedRawId,
+      created_time: nowIso,
+      message_time: nowIso,
+      updated_at: nowIso,
+      last_updated_time: nowIso,
+      created_time_ts: nowTs,
+      message_time_ts: nowTs,
+      updated_at_ts: nowTs,
+      last_updated_time_ts: nowTs,
+      source: auth.ingestMode === 'secret' ? 'ingest_secret' : 'web_user',
+    }
+    try {
+      await uniqueCol.doc(uniqueId).set(uniquePayload)
+    } catch (e) {
+      console.error('demands_ingest_unique_create_failed', e)
+      res.status(500).json({ ok: false, error: 'UNIQUE_CREATE_FAILED' })
+      return
+    }
+  } else {
+    const canonicalExisting = String((picked.best && picked.best.canonical_raw_id) || '').trim()
+    const patch = {
+      updated_at: nowIso,
+      last_updated_time: nowIso,
+      updated_at_ts: nowTs,
+      last_updated_time_ts: nowTs,
+    }
+    if (!canonicalExisting && savedRawId) {
+      patch.canonical_raw_id = savedRawId
+    }
+    try {
+      await uniqueCol.doc(uniqueId).update(patch)
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    if (savedRawId) {
+      await rawCol.doc(savedRawId).update({
+        unique_demand_id: uniqueId,
+        updatedAt: new Date(),
+      })
+    }
+  } catch {
+    // ignore
+  }
+
+  res.json({
+    ok: true,
+    raw_id: savedRawId,
+    unique_demand_id: uniqueId,
+    similarity: {
+      enabled,
+      rule,
+      threshold,
+      category: picked.bestCat,
+      text: picked.bestText,
+    },
+  })
+}
+
+async function handleDemandIngest(req, res) {
+  if (!demandsFeatureEnabled()) {
+    res.status(410).json({ ok: false, error: 'DEMANDS_MOVED_TO_SAPBOSS_API' })
+    return
+  }
+  await handleDemandIngestCloud(req, res)
 }
 
 function getBearerToken(req) {
@@ -488,66 +1319,6 @@ function requireUid(req, res) {
   return { uid, nickname }
 }
 
-function getCloudbaseAuthBase() {
-  const base = String(process.env.TCB_AUTH_BASE || '').trim()
-  if (base) return base.replace(/\/+$/, '')
-
-  const envId = String(process.env.TCB_ENV_ID || '').trim()
-  const region = String(process.env.TCB_REGION || 'ap-shanghai').trim()
-  if (!envId) return ''
-  return `https://${envId}.${region}.tcb-api.tencentcloudapi.com/auth/v1`
-}
-
-function httpsJson(method, urlStr, headers, body) {
-  return new Promise((resolve, reject) => {
-    try {
-      const u = new URL(urlStr)
-      const req = https.request(
-        {
-          method,
-          hostname: u.hostname,
-          path: u.pathname + u.search,
-          headers: headers || {},
-        },
-        (res) => {
-          let data = ''
-          res.on('data', (chunk) => (data += chunk))
-          res.on('end', () => {
-            const status = res.statusCode || 0
-            try {
-              const json = data ? JSON.parse(data) : {}
-              resolve({ status, json })
-            } catch {
-              resolve({ status, json: { raw: data } })
-            }
-          })
-        },
-      )
-      req.on('error', reject)
-      if (body) req.write(body)
-      req.end()
-    } catch (e) {
-      reject(e)
-    }
-  })
-}
-
-async function getCloudbaseUserMe(accessToken) {
-  const base = getCloudbaseAuthBase()
-  if (!base) return { ok: false, error: 'TCB_AUTH_BASE_NOT_CONFIGURED' }
-
-  const r = await httpsJson('GET', `${base}/user/me`, { Authorization: `Bearer ${accessToken}` }, null)
-  if (!r || r.status < 200 || r.status >= 300) {
-    return { ok: false, error: 'TCB_USER_ME_FAILED', status: r && r.status, data: r && r.json }
-  }
-
-  const j = r.json || {}
-  const uid = String(j.uid || (j.user && j.user.uid) || j.sub || '').trim()
-  if (!uid) return { ok: false, error: 'TCB_UID_MISSING', data: j }
-
-  return { ok: true, uid, raw: j }
-}
-
 const handleGetAuthToken = async (req, res) => {
   res.status(410).json({ ok: false, error: 'CLOUDBASE_EXCHANGE_DISABLED' })
 }
@@ -622,6 +1393,306 @@ app.get('/health', async (req, res) => {
   } catch (e) {
     console.error('health_check_failed', e)
     res.status(500).json({ ok: false, db: false, error: 'DB_UNAVAILABLE' })
+  }
+})
+
+app.get('/unique_demands/:id', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureUniqueDemandsTable()
+    const id = String((req.params && req.params.id) || '').trim()
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'ID_REQUIRED' })
+      return
+    }
+    const r = await pool.query('SELECT * FROM sap_unique_demands WHERE doc_id = $1 LIMIT 1', [id])
+    const row = r.rows && r.rows[0]
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'NOT_FOUND' })
+      return
+    }
+    res.json({ ok: true, demand: mapUniqueDemandRow(row) })
+  } catch (e) {
+    console.error('unique_demand_get_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/unique_demands/count', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureUniqueDemandsTable()
+    const startTs = Number(req.query && req.query.startTs)
+    const endTs = Number(req.query && req.query.endTs)
+    if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
+      res.status(400).json({ ok: false, error: 'RANGE_REQUIRED' })
+      return
+    }
+
+    const fieldRaw = String((req.query && req.query.field) || 'created_time_ts').trim()
+    const allowed = new Set(['message_time_ts', 'created_time_ts', 'last_updated_time_ts', 'updated_at_ts'])
+    const field = allowed.has(fieldRaw) ? fieldRaw : 'created_time_ts'
+
+    const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
+
+    let sql = `SELECT COUNT(*)::bigint AS cnt FROM sap_unique_demands WHERE ${field} >= $1 AND ${field} < $2`
+    const vals = [Math.trunc(startTs), Math.trunc(endTs)]
+    if (onlyValid) sql += " AND demand_type = 'valid'"
+
+    const r = await pool.query(sql, vals)
+    const cnt = r && r.rows && r.rows[0] ? Number(r.rows[0].cnt || 0) : 0
+    res.json({ ok: true, count: cnt })
+  } catch (e) {
+    console.error('unique_demand_count_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/unique_demands/range', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureUniqueDemandsTable()
+    const startTs = Number(req.query && req.query.startTs)
+    const endTs = Number(req.query && req.query.endTs)
+    if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
+      res.status(400).json({ ok: false, error: 'RANGE_REQUIRED' })
+      return
+    }
+
+    const fieldRaw = String((req.query && req.query.field) || 'created_time_ts').trim()
+    const allowed = new Set(['message_time_ts', 'created_time_ts', 'last_updated_time_ts', 'updated_at_ts'])
+    const field = allowed.has(fieldRaw) ? fieldRaw : 'created_time_ts'
+
+    const orderRaw = String((req.query && req.query.order) || 'desc').trim().toLowerCase()
+    const order = orderRaw === 'asc' ? 'ASC' : 'DESC'
+    const limit = Math.max(1, Math.min(500, Number((req.query && req.query.limit) || 100)))
+    const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
+    const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
+
+    let sql = `SELECT * FROM sap_unique_demands WHERE ${field} >= $1 AND ${field} < $2`
+    const vals = [Math.trunc(startTs), Math.trunc(endTs)]
+    let idx = 3
+    if (onlyValid) sql += " AND demand_type = 'valid'"
+    sql += ` ORDER BY ${field} ${order}, doc_id ${order}`
+    sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
+    vals.push(offset, limit)
+
+    const r = await pool.query(sql, vals)
+    res.json({ ok: true, demands: (r.rows || []).map(mapUniqueDemandRow) })
+  } catch (e) {
+    console.error('unique_demand_range_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/unique_demands/all', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureUniqueDemandsTable()
+    const orderRaw = String((req.query && req.query.order) || 'desc').trim().toLowerCase()
+    const order = orderRaw === 'asc' ? 'ASC' : 'DESC'
+    const orderByRaw = String((req.query && req.query.orderBy) || 'local_id').trim()
+    const allowed = new Set(['local_id', 'created_time_ts', 'message_time_ts', 'last_updated_time_ts', 'updated_at_ts'])
+    const orderBy = allowed.has(orderByRaw) ? orderByRaw : 'local_id'
+    const limit = Math.max(1, Math.min(500, Number((req.query && req.query.limit) || 100)))
+    const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
+    const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
+
+    let sql = 'SELECT * FROM sap_unique_demands'
+    const vals = []
+    let idx = 1
+    if (onlyValid) {
+      sql += " WHERE demand_type = 'valid'"
+    }
+    sql += ` ORDER BY ${orderBy} ${order} NULLS LAST, doc_id ${order}`
+    sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
+    vals.push(offset, limit)
+
+    const r = await pool.query(sql, vals)
+    res.json({ ok: true, demands: (r.rows || []).map(mapUniqueDemandRow) })
+  } catch (e) {
+    console.error('unique_demand_all_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/admin/raw_candidates', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const admin = requireAdminAuth(req, res)
+  if (!admin) return
+
+  try {
+    await ensureDemandsTable()
+    const uniqueId = String((req.query && req.query.uniqueId) || '').trim()
+    if (!uniqueId) {
+      res.status(400).json({ ok: false, error: 'UNIQUE_ID_REQUIRED' })
+      return
+    }
+
+    const kw = String((req.query && req.query.kw) || '').trim()
+    const limitLinked = Math.max(1, Math.min(200, Number((req.query && req.query.limitLinked) || 80)))
+    const limitRecent = Math.max(1, Math.min(500, Number((req.query && req.query.limitRecent) || 260)))
+
+    const linkedRes = await pool.query('SELECT * FROM sap_demands WHERE unique_demand_id = $1 ORDER BY created_at DESC LIMIT $2', [
+      uniqueId,
+      limitLinked,
+    ])
+    const linkedList = (linkedRes && linkedRes.rows) || []
+
+    const recentRes = await pool.query('SELECT * FROM sap_demands ORDER BY created_at DESC LIMIT $1', [limitRecent])
+    const recentList = (recentRes && recentRes.rows) || []
+
+    let exactById = []
+    if (kw && /^\d{1,18}$/.test(kw)) {
+      const idNum = Number(kw)
+      if (Number.isFinite(idNum) && idNum > 0) {
+        const r = await pool.query('SELECT * FROM sap_demands WHERE id = $1 LIMIT 1', [idNum])
+        exactById = (r && r.rows) || []
+      }
+    }
+
+    const mergedById = new Map()
+    for (const x of [...linkedList, ...exactById, ...recentList]) {
+      const id = x && x.id !== undefined && x.id !== null ? String(x.id) : ''
+      if (!id) continue
+      if (!mergedById.has(id)) mergedById.set(id, x)
+    }
+
+    const list = Array.from(mergedById.values()).map(mapDemandDocLike)
+    res.json({ ok: true, demands: list.filter(Boolean) })
+  } catch (e) {
+    console.error('admin_raw_candidates_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/admin/link_raw', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const admin = requireAdminAuth(req, res)
+  if (!admin) return
+
+  try {
+    await ensureDemandsTable()
+    const body = (req && req.body) || {}
+    const rawId = String(body.rawId || body.raw_id || body.id || '').trim()
+    const uniqueId = String(body.uniqueId || body.unique_id || '').trim()
+    const idNum = Number(rawId)
+
+    if (!rawId || !Number.isFinite(idNum) || idNum <= 0) {
+      res.status(400).json({ ok: false, error: 'RAW_ID_REQUIRED' })
+      return
+    }
+    if (!uniqueId) {
+      res.status(400).json({ ok: false, error: 'UNIQUE_ID_REQUIRED' })
+      return
+    }
+
+    const r = await pool.query(
+      'UPDATE sap_demands SET unique_demand_id = $1, unique_override_by = $2, unique_override_at = now(), updated_at = now() WHERE id = $3 RETURNING *',
+      [uniqueId, String(admin.uid || ''), idNum],
+    )
+
+    const row = r && r.rows && r.rows[0]
+    res.json({ ok: true, demand: mapDemandDocLike(row) })
+  } catch (e) {
+    console.error('admin_link_raw_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/admin/unlink_raw', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const admin = requireAdminAuth(req, res)
+  if (!admin) return
+
+  try {
+    await ensureDemandsTable()
+    const body = (req && req.body) || {}
+    const rawId = String(body.rawId || body.raw_id || body.id || '').trim()
+    const idNum = Number(rawId)
+
+    if (!rawId || !Number.isFinite(idNum) || idNum <= 0) {
+      res.status(400).json({ ok: false, error: 'RAW_ID_REQUIRED' })
+      return
+    }
+
+    const r = await pool.query(
+      "UPDATE sap_demands SET unique_demand_id = '', unique_override_by = $1, unique_override_at = now(), updated_at = now() WHERE id = $2 RETURNING *",
+      [String(admin.uid || ''), idNum],
+    )
+    const row = r && r.rows && r.rows[0]
+    res.json({ ok: true, demand: mapDemandDocLike(row) })
+  } catch (e) {
+    console.error('admin_unlink_raw_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/admin/set_canonical_raw', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const admin = requireAdminAuth(req, res)
+  if (!admin) return
+
+  try {
+    await ensureUniqueDemandsTable()
+    const body = (req && req.body) || {}
+    const uniqueId = String(body.uniqueId || body.unique_id || body.id || '').trim()
+    const rawId = String(body.rawId || body.raw_id || '').trim()
+
+    if (!uniqueId) {
+      res.status(400).json({ ok: false, error: 'UNIQUE_ID_REQUIRED' })
+      return
+    }
+    if (!rawId) {
+      res.status(400).json({ ok: false, error: 'RAW_ID_REQUIRED' })
+      return
+    }
+
+    const r = await pool.query(
+      'UPDATE sap_unique_demands SET canonical_raw_id = $1, canonical_set_by = $2, canonical_set_at = now(), updated_at_db = now() WHERE doc_id = $3 RETURNING *',
+      [rawId, String(admin.uid || ''), uniqueId],
+    )
+    const row = r && r.rows && r.rows[0]
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'NOT_FOUND' })
+      return
+    }
+    res.json({ ok: true, demand: mapUniqueDemandRow(row) })
+  } catch (e) {
+    console.error('admin_set_canonical_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
   }
 })
 
@@ -876,6 +1947,271 @@ const handleGetPoints = async (req, res) => {
   }
 }
 
+async function handleDemandIngestPg(req, res) {
+  const auth = requireIngestAuth(req, res)
+  if (!auth) return
+
+  try {
+    const body = (req && req.body) || {}
+    const docId = pickDocIdLike(body.doc_id || body.docId)
+    const demandObj = body && body.demand && typeof body.demand === 'object' ? body.demand : body
+
+    if (docId && String(docId).startsWith('raw_ud_')) {
+      const row = await upsertUniqueDemand(docId, demandObj)
+      res.json({ ok: true, unique: mapUniqueDemandRow(row) })
+      return
+    }
+
+    const payload = sanitizeDemandPayload(demandObj || {}, auth)
+    const row = await upsertDemand(payload, payload.source || 'ingest')
+    res.json({ ok: true, demand: mapDemandRow(row) })
+  } catch (e) {
+    console.error('demand_ingest_pg_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+}
+
+function demandsGone(res) {
+  res.status(410).json({ ok: false, error: 'DEMANDS_MOVED_TO_SAPBOSS_API' })
+}
+
+app.get('/config/similarity', (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  res.json({ ok: true, config: getDefaultSimilarityConfig() })
+})
+
+app.get('/demands', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureDemandsTable()
+    const limitRaw = req.query && req.query.limit
+    const limit = Math.max(1, Math.min(500, Number(limitRaw || 200)))
+    const r = await pool.query('SELECT * FROM sap_demands ORDER BY created_at DESC LIMIT $1', [limit])
+    res.json({ ok: true, demands: (r.rows || []).map(mapDemandRow) })
+  } catch (e) {
+    console.error('demands_list_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/demands/:id(\\d+)', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureDemandsTable()
+    const id = String(req.params && req.params.id || '').trim()
+    const idNum = Number(id)
+    if (!id || !Number.isFinite(idNum) || idNum <= 0) {
+      res.status(400).json({ ok: false, error: 'ID_REQUIRED' })
+      return
+    }
+    const r = await pool.query('SELECT * FROM sap_demands WHERE id = $1 LIMIT 1', [idNum])
+    const row = r.rows && r.rows[0]
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'NOT_FOUND' })
+      return
+    }
+    res.json({ ok: true, demand: mapDemandRow(row) })
+  } catch (e) {
+    console.error('demand_get_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.get('/demands/mine_raw', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const auth = requireWriteAuth(req, res)
+  if (!auth) return
+
+  let db = null
+  try {
+    db = getCloudDbOrThrow()
+  } catch {
+    db = null
+  }
+
+  if (!db) {
+    res.status(500).json({ ok: false, error: 'CLOUDBASE_NOT_CONFIGURED' })
+    return
+  }
+
+  try {
+    const limitRaw = req.query && req.query.limit
+    const limit = Math.max(1, Math.min(200, Number(limitRaw || 50)))
+    const col = db.collection('sap_demands_raw').where({ provider_user_id: String(auth.uid || '').trim() })
+
+    let r
+    try {
+      r = await col.orderBy('createdAt', 'desc').limit(limit).get()
+    } catch {
+      try {
+        r = await col.orderBy('updatedAt', 'desc').limit(limit).get()
+      } catch {
+        r = await col.limit(limit).get()
+      }
+    }
+
+    const docs = ((r && r.data) || []).map((doc) => {
+      const _id = String((doc && (doc._id || doc.id)) || '').trim()
+      return { id: _id, ...doc }
+    })
+
+    res.json({ ok: true, demands: docs })
+  } catch (e) {
+    console.error('demands_mine_raw_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/demands/create', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const auth = requireWriteAuth(req, res)
+  if (!auth) return
+
+  try {
+    const body = (req && req.body) || {}
+    const rawText = String(body.raw_text || '').trim()
+    if (!rawText || rawText.length < 5) {
+      res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
+      return
+    }
+
+    const payload = {
+      raw_text: rawText,
+      module_codes: Array.isArray(body.module_codes) ? body.module_codes : [],
+      module_labels: Array.isArray(body.module_labels) ? body.module_labels : [],
+      city: body.city || '',
+      duration_text: body.duration_text || '',
+      years_text: body.years_text || '',
+      language: body.language || '',
+      daily_rate: body.daily_rate || '',
+      is_remote: typeof body.is_remote === 'boolean' ? body.is_remote : undefined,
+      cooperation_mode: body.cooperation_mode || '',
+      work_mode: body.work_mode || '',
+      consultant_level: body.consultant_level || '',
+      project_cycle: body.project_cycle || '',
+      time_requirement: body.time_requirement || '',
+      provider_name: String(body.provider_name || auth.nickname || '').trim(),
+      provider_user_id: auth.uid,
+    }
+
+    const saved = await upsertDemand(payload, 'user')
+    res.json({ ok: true, demand: mapDemandRow(saved) })
+  } catch (e) {
+    console.error('demand_create_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/demands/check_similar', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    let db = null
+    try {
+      db = getCloudDbOrThrow()
+    } catch {
+      db = null
+    }
+
+    if (!db) {
+      res.json({ ok: true, hasSimilar: false, similarDemands: [] })
+      return
+    }
+
+    const cfg = await fetchAdminConfigFromCloudbase(db)
+
+    const body = (req && req.body) || {}
+    const rawText = String(body.rawText || body.raw_text || '').trim()
+    if (!rawText) {
+      res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
+      return
+    }
+
+    const days = typeof body.days === 'number' ? body.days : 7
+    const limit = typeof body.limit === 'number' ? body.limit : 100
+    const threshold = typeof body.threshold === 'number' ? body.threshold : Number(cfg.similarity_threshold)
+    const rule = body.rule ? normalizeRule(body.rule) : normalizeRule(cfg.similarity_rule)
+    const currentUserId = String(body.currentUserId || '').trim()
+
+    const parsed = body.parsed || {}
+    const incomingCat = getCategoryLite({
+      raw_text: rawText,
+      module_codes: Array.isArray(parsed.module_codes) ? parsed.module_codes : [],
+      city: String(parsed.city || ''),
+      is_remote: typeof parsed.is_remote === 'boolean' ? parsed.is_remote : undefined,
+      duration_text: String(parsed.duration_text || ''),
+      years_text: String(parsed.years_text || ''),
+      language_tag: String(parsed.language_tag || parsed.language || ''),
+      cooperation_mode: String(parsed.cooperation_mode || ''),
+      work_mode: String(parsed.work_mode || ''),
+      consultant_level: String(parsed.consultant_level || ''),
+      project_cycle: String(parsed.project_cycle || ''),
+      time_requirement: String(parsed.time_requirement || ''),
+    })
+
+    const candidates = await fetchUniqueCandidatesCloudbase(db, Math.max(1, Math.min(200, Number(limit) || 100)))
+    const sinceMs = Date.now() - Math.max(1, Math.min(365, days)) * 24 * 60 * 60 * 1000
+
+    const out = []
+    for (const d of (candidates || [])) {
+      const otherText = String(d && d.raw_text || '')
+      if (!otherText) continue
+
+      const ts = Number(d && (d.last_updated_time_ts ?? d.updated_at_ts ?? d.created_time_ts ?? d.message_time_ts))
+      if (Number.isFinite(ts) && ts > 0 && ts < sinceMs) continue
+
+      const textSim = calculateTextSimilarity(rawText, otherText)
+      const catSim = calculateCategorySimilarity(incomingCat, getCategoryLite(d))
+
+      const hybridSim = Math.max(catSim, textSim * 0.5)
+      let sim = textSim
+      if (rule === 'category') sim = catSim
+      if (rule === 'hybrid') sim = hybridSim
+
+      if (sim >= threshold) {
+        const provider_user_id = d && (d.provider_id || d.provider_user_id) ? String(d.provider_id || d.provider_user_id) : ''
+        out.push({
+          id: String((d && (d._id || d.id)) || ''),
+          raw_text: otherText,
+          similarity: Math.round(sim * 100) / 100,
+          createdAt: (d && (d.created_time || d.message_time || d.updated_at || d.last_updated_time)) || undefined,
+          provider_name: String((d && (d.publisher_name || d.provider_name)) || '未知'),
+          provider_user_id: provider_user_id || undefined,
+          isSameUser: !!(currentUserId && provider_user_id && provider_user_id === currentUserId),
+        })
+      }
+    }
+
+    out.sort((a, b) => b.similarity - a.similarity)
+    res.json({ ok: true, hasSimilar: out.length > 0, similarDemands: out })
+  } catch (e) {
+    console.error('demand_check_similar_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
 app.post('/get_or_create_profile', handleGetOrCreateProfile)
 app.get('/get_profile', handleGetProfile)
 app.post('/update_profile', handleUpdateProfile)
@@ -891,6 +2227,8 @@ app.post('/profile/list', handleGetProfiles)
 app.post('/auth/exchange', handleGetAuthToken)
 app.post('/auth/register', handleAuthRegister)
 app.post('/auth/login', handleAuthLogin)
+
+app.post('/demands/ingest', handleDemandIngest)
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 const host = process.env.HOST || '127.0.0.1'

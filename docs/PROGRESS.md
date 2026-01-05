@@ -7,6 +7,12 @@
 **环境ID**: cloud1-2g93n7qgab878d25  
 **最后更新**: 2025-12-19
 
+## 云服务器 / MCP 参数（供自动化运维使用）
+
+- **Tencent Region**: `ap-nanjing`
+- **Tencent InstanceId**: `ins-f4ov0dk8`
+- **sapboss-api (3000) ADMIN_UIDS**: `acc_0619a066b2c157bc8fd654c24a19ef5d`
+
 ## 开发阶段
 
 ### ✅ 阶段1：需求展示功能（已完成）
