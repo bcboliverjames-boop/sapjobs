@@ -10,6 +10,134 @@ const ENV_ID: string = import.meta.env.VITE_ENV_ID || 'cloud1-2g93n7qgab878d25';
 // 检查环境ID是否已配置
 export const isValidEnvId = ENV_ID && ENV_ID !== 'your-env-id';
 
+let lastAnonymousSignInFailedAt = 0
+let lastAnonymousSignInError: any = null
+const ANON_SIGNIN_COOLDOWN_MS = 30_000
+
+const GUEST_UID_KEY = 'sapboss_guest_uid'
+
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+const LAST_LOGIN_IDENTIFIER_KEY = 'sapboss_last_login_identifier'
+const LAST_LOGIN_IDENTIFIER_TYPE_KEY = 'sapboss_last_login_identifier_type'
+
+function isH5Runtime() {
+  try {
+    return typeof window !== 'undefined'
+  } catch {
+    return false
+  }
+}
+
+function getOrCreateGuestUser() {
+  const read = () => {
+    try {
+      return String(uni.getStorageSync(GUEST_UID_KEY) || '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  let uid = read()
+  if (!uid) {
+    uid = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+    try {
+      uni.setStorageSync(GUEST_UID_KEY, uid)
+    } catch {}
+  }
+
+  return {
+    uid,
+    nickName: '游客',
+    nickname: '游客',
+    _isGuest: true,
+  }
+}
+
+export function isGuestUser(user: any) {
+  if (!user) return false
+  if ((user as any).user || (user as any).isAnonymousAuth || (user as any).isAnonymousAuth) {
+    const state: any = user as any
+    if (state && (state.isAnonymousAuth || state.isAnonymousAuth)) return true
+    return !!(state && state.user && (state.user as any)._isGuest)
+  }
+  return !!((user as any)._isGuest)
+}
+
+let lastGuestPromptAt = 0
+
+function isRestrictedRoute(route: string) {
+  return (
+    route.includes('pages/demand/publish') ||
+    route.includes('pages/message/chat') ||
+    route.includes('pages/message/list') ||
+    route.includes('pages/profile/profile')
+  )
+}
+
+async function promptLoginOnce() {
+  const now = Date.now()
+  if (lastGuestPromptAt && now - lastGuestPromptAt < 1500) return
+  lastGuestPromptAt = now
+
+  let route = ''
+  try {
+    const pages = (uni as any).getCurrentPages ? (uni as any).getCurrentPages() : []
+    const last = pages && pages.length ? pages[pages.length - 1] : null
+    route = String((last && (last.route || last.__route__)) || '')
+    if (route.includes('pages/login')) return
+  } catch {}
+
+  const confirmed = await new Promise<boolean>((resolve) => {
+    try {
+      uni.showModal({
+        title: '需要登录',
+        content: '登录后才能使用该功能',
+        confirmText: '去登录',
+        cancelText: '继续浏览',
+        success: (res) => resolve(!!(res as any)?.confirm),
+        fail: () => resolve(false),
+      })
+    } catch {
+      resolve(false)
+    }
+  })
+
+  if (confirmed) {
+    try {
+      uni.navigateTo({ url: '/pages/login/password-login' })
+    } catch {}
+    return
+  }
+
+  if (isRestrictedRoute(route)) {
+    try {
+      uni.navigateBack({
+        delta: 1,
+        fail: () => {
+          try {
+            uni.reLaunch({ url: '/pages/index/index' })
+          } catch {}
+        },
+      })
+    } catch {
+      try {
+        uni.reLaunch({ url: '/pages/index/index' })
+      } catch {}
+    }
+  }
+}
+
+export async function requireNonGuest() {
+  const state: any = await ensureLogin()
+  const user = state && state.user
+  if (isGuestUser(user)) {
+    await promptLoginOnce()
+    throw new Error('GUEST_READONLY')
+  }
+  return state
+}
+
 /**
  * 初始化云开发实例
  * @param {Object} config - 初始化配置
@@ -69,11 +197,16 @@ export const checkEnvironment = () => {
 export const login = async () => {
   // const auth = app.auth();
   try {
+    if (isH5Runtime()) {
+      return
+    }
     // 默认采用匿名登录
     await auth.signInAnonymously();
     // 也可以换成跳转SDK 内置的登录页面，支持账号密码登录/手机号登录/微信登录,目前只支持 web 端，小程序等其他平台请自行实现登录逻辑
     // await auth.toDefaultLoginPage()
   } catch (error) {
+    lastAnonymousSignInFailedAt = Date.now()
+    lastAnonymousSignInError = error
     console.error('登录失败:', error);
     throw error;
   }
@@ -315,13 +448,70 @@ export const ensureLogin = async () => {
     throw new Error('环境ID未配置');
   }
 
+  if (isH5Runtime()) {
+    const storedJwt = (() => {
+      try {
+        return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+      } catch {
+        return ''
+      }
+    })()
+
+    if (storedJwt) {
+      // 客户端无法校验 JWT 签名，这里仅用于 UI/权限判断；服务端会在接口处校验。
+      const uid = (() => {
+        try {
+          const parts = storedJwt.split('.')
+          if (parts.length < 2) return ''
+          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+          const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+          const json = JSON.parse(atob(padded))
+          return String(json.uid || json.sub || '').trim()
+        } catch {
+          return ''
+        }
+      })()
+
+      if (uid) {
+        return {
+          user: {
+            uid,
+            nickName: '',
+            nickname: '',
+            _isGuest: false,
+            _isLocalAuth: true,
+          },
+          isLocalAuth: true,
+        } as any
+      }
+    }
+
+    return { user: getOrCreateGuestUser(), isAnonymousAuth: true } as any
+  }
+
   // const auth = app.auth();
 
   try {
     // 检查当前登录状态
-    let loginState = await auth.getLoginState();
+    let loginState = await auth.getLoginState().catch(() => null as any);
 
     if (loginState && loginState.user) {
+      try {
+        const isAnon =
+          !!((loginState as any).isAnonymousAuth || (loginState as any).isAnonymousAuth) ||
+          String(((loginState as any).user && ((loginState as any).user as any).loginType) || '')
+            .toUpperCase()
+            .includes('ANON')
+        if (isAnon && (loginState as any).user) {
+          ;((loginState as any).user as any)._isGuest = true
+          const nn = String((((loginState as any).user as any).nickName || ((loginState as any).user as any).nickname) || '').trim()
+          if (!nn) {
+            ;((loginState as any).user as any).nickName = '游客'
+            ;((loginState as any).user as any).nickname = '游客'
+          }
+        }
+      } catch {}
+
       // 已登录，返回当前状态
       console.log('用户已登录');
       return loginState;
@@ -329,12 +519,39 @@ export const ensureLogin = async () => {
 
     // 未登录，执行匿名登录
     console.log('用户未登录，执行登录...');
+
+    const now = Date.now()
+    if (lastAnonymousSignInFailedAt && now - lastAnonymousSignInFailedAt < ANON_SIGNIN_COOLDOWN_MS) {
+      throw lastAnonymousSignInError || new Error('ANON_SIGNIN_FAILED')
+    }
+
     await login();
     loginState = await auth.getLoginState();
-    if (loginState && loginState.user) return loginState;
+    if (loginState && loginState.user) {
+      try {
+        const isAnon =
+          !!((loginState as any).isAnonymousAuth || (loginState as any).isAnonymousAuth) ||
+          String(((loginState as any).user && ((loginState as any).user as any).loginType) || '')
+            .toUpperCase()
+            .includes('ANON')
+        if (isAnon && (loginState as any).user) {
+          ;((loginState as any).user as any)._isGuest = true
+          const nn = String((((loginState as any).user as any).nickName || ((loginState as any).user as any).nickname) || '').trim()
+          if (!nn) {
+            ;((loginState as any).user as any).nickName = '游客'
+            ;((loginState as any).user as any).nickname = '游客'
+          }
+        }
+      } catch {}
+
+      return loginState;
+    }
 
     throw new Error('LOGIN_FAILED');
   } catch (error) {
+    if (isH5Runtime()) {
+      return { user: getOrCreateGuestUser() } as any
+    }
     console.error('登录失败:', error);
     throw error;
   }
@@ -363,7 +580,34 @@ export const logout = async () => {
   // const auth = app.auth();
 
   try {
-    await auth.signOut();
+    try {
+      ;(uni as any).removeStorageSync(API_TOKEN_KEY)
+      ;(uni as any).removeStorageSync(LAST_LOGIN_IDENTIFIER_KEY)
+      ;(uni as any).removeStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY)
+      ;(uni as any).removeStorageSync(GUEST_UID_KEY)
+    } catch {
+      try {
+        uni.setStorageSync(API_TOKEN_KEY, '')
+        uni.setStorageSync(LAST_LOGIN_IDENTIFIER_KEY, '')
+        uni.setStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY, '')
+        uni.setStorageSync(GUEST_UID_KEY, '')
+      } catch {}
+    }
+
+    if (isH5Runtime()) {
+      return { success: true, message: '已成功退出登录' }
+    }
+
+    try {
+      await auth.signOut()
+    } catch (e: any) {
+      const code = String((e && (e.code || e.error)) || '').toLowerCase()
+      const msg = String((e && (e.message || e.error_description)) || '').toLowerCase()
+      const isCredMissing =
+        code.includes('unauth') || msg.includes('credentials not found') || msg.includes('unauth')
+      if (!isCredMissing) throw e
+    }
+
     return { success: true, message: '已成功退出登录' };
   } catch (error) {
     console.error('退出登录失败:', error);

@@ -147,7 +147,6 @@ export async function ensureApiToken(): Promise<string> {
   } catch {}
 
   // CloudBase exchange is disabled: token must be obtained via self-hosted login (/auth/login or /auth/register)
-  await requireNonGuest()
   throw new Error('JWT_REQUIRED')
 }
 
