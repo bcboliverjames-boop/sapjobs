@@ -1405,7 +1405,7 @@ app.get('/unique_demands/:id', async (req, res, next) => {
   try {
     await ensureUniqueDemandsTable()
     const id = String((req.params && req.params.id) || '').trim()
-    if (id === 'count' || id === 'range' || id === 'all') {
+    if (id === 'count' || id === 'range' || id === 'all' || id === 'list') {
       next()
       return
     }
@@ -1497,6 +1497,42 @@ app.get('/unique_demands/range', async (req, res) => {
     res.json({ ok: true, demands: (r.rows || []).map(mapUniqueDemandRow) })
   } catch (e) {
     console.error('unique_demand_range_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+
+app.get('/unique_demands/list', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  try {
+    await ensureUniqueDemandsTable()
+    const orderRaw = String((req.query && req.query.order) || 'desc').trim().toLowerCase()
+    const order = orderRaw === 'asc' ? 'ASC' : 'DESC'
+    const orderByRaw = String((req.query && req.query.orderBy) || 'local_id').trim()
+    const allowed = new Set(['local_id', 'created_time_ts', 'message_time_ts', 'last_updated_time_ts', 'updated_at_ts'])
+    const orderBy = allowed.has(orderByRaw) ? orderByRaw : 'local_id'
+    const limit = Math.max(1, Math.min(500, Number((req.query && req.query.limit) || 100)))
+    const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
+    const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
+
+    let sql = 'SELECT * FROM sap_unique_demands'
+    const vals = []
+    let idx = 1
+    if (onlyValid) {
+      sql += " WHERE demand_type = 'valid'"
+    }
+    sql += ` ORDER BY ${orderBy} ${order} NULLS LAST, doc_id ${order}`
+    sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
+    vals.push(offset, limit)
+
+    const r = await pool.query(sql, vals)
+    res.json({ ok: true, demands: (r.rows || []).map(mapUniqueDemandRow) })
+  } catch (e) {
+    console.error('unique_demand_list_failed', e)
     res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
   }
 })
