@@ -179,6 +179,10 @@ const handleLogin = async () => {
     loadingText.value = '登录中...'
     
     await loginWithPassword(username.value.trim(), password.value)
+
+    try {
+      uni.setStorageSync('sapboss_need_refresh_home', '1')
+    } catch {}
     
     uni.showToast({
       title: '登录成功',

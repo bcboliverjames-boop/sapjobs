@@ -6,17 +6,17 @@
         <text class="badge">SAP</text>
         <text class="page-title">顾问需求广场</text>
         <view class="header-actions">
-          <view class="refresh-btn" @tap="handleRefreshTags" :class="{ 'refresh-btn--loading': refreshingTags }">
+          <view v-if="isAdmin" class="refresh-btn" @tap="handleRefreshTags" :class="{ 'refresh-btn--loading': refreshingTags }">
             <text class="refresh-btn-text">{{ refreshingTags ? '刷新中...' : '🔄 刷新标签' }}</text>
           </view>
           <view class="publish-btn" @tap="goToPublish" :class="{ 'guest-disabled': isGuest }">
             <text class="publish-btn-text">+ 发布</text>
           </view>
+          <view class="icon-btn" @tap="goToAccount">
+            <uni-icons type="person" size="18" color="#F5F1E8" />
+          </view>
         </view>
       </view>
-      <text class="page-subtitle">
-        从微信群 / QQ 群整理出来的真实需求，按模块和城市快速浏览。
-      </text>
     </view>
 
     <!-- 搜索框 -->
@@ -24,10 +24,16 @@
       <input
         class="search-input"
         v-model="searchKeyword"
+        type="text"
         placeholder="搜索需求内容、模块、城市..."
+        confirm-type="search"
         @input="handleSearch"
         @confirm="handleSearch"
+        @click.stop
       />
+      <view class="search-action" @click.stop="triggerSearch">
+        <text class="search-action-text">搜索</text>
+      </view>
       <view v-if="searchKeyword" class="search-clear" @tap="clearSearch">
         <text class="search-clear-text">✕</text>
       </view>
@@ -104,6 +110,21 @@
             class="chip chip--ghost"
             :class="{ 'chip--active-ghost': m.value === activeRemoteMode }"
             @tap="setRemoteMode(m.value)"
+          >
+            <text class="chip-text">{{ m.label }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="filter-group">
+        <text class="filter-label">合作方式</text>
+        <view class="filter-chips tight">
+          <view
+            v-for="m in cooperationModes"
+            :key="m.value"
+            class="chip chip--ghost"
+            :class="{ 'chip--active-ghost': m.value === activeCooperationMode }"
+            @tap="setCooperationMode(m.value)"
           >
             <text class="chip-text">{{ m.label }}</text>
           </view>
@@ -191,68 +212,74 @@
            <view class="tag tag--rate" v-if="card.daily_rate">
              <text>💰 {{ formatDailyRate(card.daily_rate) }}</text>
            </view>
+           <view class="tag tag--ghost" v-if="card.cooperation_mode">
+             <text>{{ card.cooperation_mode }}</text>
+           </view>
+           <view v-for="t in card.extra_tags" :key="t" class="tag tag--ghost">
+             <text>{{ t }}</text>
+           </view>
            <view class="tag tag--related" v-if="card.relatedCount && card.relatedCount > 0">
              <text>关联需求数 {{ card.relatedCount }}</text>
            </view>
          </view>
 
-        <!-- 状态和评价栏（可点击） -->
-        <view class="card-status-bar" @tap.stop>
-          <view 
-            class="card-status-item"
-            :class="[
-              'card-status-item--applied',
-              { 'card-status-item--active': card.userStatuses?.includes('applied') },
-              { 'guest-disabled': isGuest }
-            ]"
-            @tap.stop="handleCardStatusClick(card, 'applied')"
-          >
-            <text class="card-status-icon">📤</text>
-            <text class="card-status-label">已投递</text>
-            <text class="card-status-count">({{ card.statusCounts?.applied || 0 }})</text>
-          </view>
-          <view 
-            class="card-status-item"
-            :class="[
-              'card-status-item--interviewed',
-              { 'card-status-item--active': card.userStatuses?.includes('interviewed') },
-              { 'guest-disabled': isGuest }
-            ]"
-            @tap.stop="handleCardStatusClick(card, 'interviewed')"
-          >
-            <text class="card-status-icon">💼</text>
-            <text class="card-status-label">已面试</text>
-            <text class="card-status-count">({{ card.statusCounts?.interviewed || 0 }})</text>
-          </view>
-          <view 
-            class="card-status-item"
-            :class="[
-              'card-status-item--onboarded',
-              { 'card-status-item--active': card.userStatuses?.includes('onboarded') },
-              { 'guest-disabled': isGuest }
-            ]"
-            @tap.stop="handleCardStatusClick(card, 'onboarded')"
-          >
-            <text class="card-status-icon">✅</text>
-            <text class="card-status-label">已到岗</text>
-            <text class="card-status-count">({{ card.statusCounts?.onboarded || 0 }})</text>
-          </view>
-          <view 
-            class="card-status-item"
-            :class="[
-              'card-status-item--closed',
-              { 'card-status-item--active': card.userStatuses?.includes('closed') },
-              { 'guest-disabled': isGuest }
-            ]"
-            @tap.stop="handleCardStatusClick(card, 'closed')"
-          >
-            <text class="card-status-icon">🔒</text>
-            <text class="card-status-label">已关闭</text>
-            <text class="card-status-count">({{ card.statusCounts?.closed || 0 }})</text>
-          </view>
-        </view>
+         <!-- 状态和评价栏（可点击） -->
+         <view class="card-status-bar" @tap.stop>
+           <view 
+             class="card-status-item"
+             :class="[
+               'card-status-item--applied',
+               { 'card-status-item--active': card.userStatuses?.includes('applied') },
+               { 'guest-disabled': isGuest }
+             ]"
+             @tap.stop="handleCardStatusClick(card, 'applied')"
+           >
+             <text class="card-status-icon">📤</text>
+             <text class="card-status-label">已投递</text>
+             <text class="card-status-count">({{ card.statusCounts?.applied || 0 }})</text>
+           </view>
+           <view 
+             class="card-status-item"
+             :class="[
+               'card-status-item--interviewed',
+               { 'card-status-item--active': card.userStatuses?.includes('interviewed') },
+               { 'guest-disabled': isGuest }
+             ]"
+             @tap.stop="handleCardStatusClick(card, 'interviewed')"
+           >
+             <text class="card-status-icon">💼</text>
+             <text class="card-status-label">已面试</text>
+             <text class="card-status-count">({{ card.statusCounts?.interviewed || 0 }})</text>
+           </view>
+           <view 
+             class="card-status-item"
+             :class="[
+               'card-status-item--onboarded',
+               { 'card-status-item--active': card.userStatuses?.includes('onboarded') },
+               { 'guest-disabled': isGuest }
+             ]"
+             @tap.stop="handleCardStatusClick(card, 'onboarded')"
+           >
+             <text class="card-status-icon">✅</text>
+             <text class="card-status-label">已到岗</text>
+             <text class="card-status-count">({{ card.statusCounts?.onboarded || 0 }})</text>
+           </view>
+           <view 
+             class="card-status-item"
+             :class="[
+               'card-status-item--closed',
+               { 'card-status-item--active': card.userStatuses?.includes('closed') },
+               { 'guest-disabled': isGuest }
+             ]"
+             @tap.stop="handleCardStatusClick(card, 'closed')"
+           >
+             <text class="card-status-icon">🔒</text>
+             <text class="card-status-label">已关闭</text>
+             <text class="card-status-count">({{ card.statusCounts?.closed || 0 }})</text>
+           </view>
+         </view>
 
-        <view class="card-reliability-bar" @tap.stop>
+         <view class="card-reliability-bar" @tap.stop>
           <view 
             class="card-reliability-item card-reliability-item--reliable"
             :class="{ 'card-reliability-item--active': card.userReliability === true, 'guest-disabled': isGuest }"
@@ -271,7 +298,6 @@
             <text class="card-reliability-label">不靠谱</text>
             <text class="card-reliability-count">({{ card.reliabilityCounts?.unreliable || 0 }})</text>
           </view>
-
           <view
             class="card-favorite-btn"
             :class="{ 'card-favorite-btn--active': card.isFavorited, 'guest-disabled': isGuest }"
@@ -323,7 +349,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { onShow, onLoad } from '@dcloudio/uni-app'
-import { app, ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
+import { ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
 import { parseDemandText } from '../../utils/demand-parser'
 import { calculateTextSimilarity } from '../../utils/demand-similarity'
@@ -334,6 +360,7 @@ import {
   type SapUniqueDemandDoc,
 } from '../../utils/sap-unique-demands'
 import { refreshAllDemandsTags } from '../../utils/sap-demands'
+import { getSapModuleFilterOptions, normalizeSapModuleToken, sapModuleCodeToLabel } from '../../utils/sap-modules'
 import {
   markDemandStatus,
   unmarkDemandStatus,
@@ -346,6 +373,42 @@ import {
 } from '../../utils/demand-status'
 import { getOrCreateUserProfile } from '../../utils/user'
 import { ugcReactionToggle } from '../../utils/ugc'
+import { isAdminUid } from '../../utils/admin'
+
+function getApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 type DemandCard = {
   id: string;
@@ -356,10 +419,15 @@ type DemandCard = {
   duration_text: string;
   years_text: string;
   language: string;
-  daily_rate?: string; // 人天价格
+  daily_rate: string;
+  is_remote: boolean | null;
+  cooperation_mode: string;
+  years_bucket: '' | '0-3' | '4-6' | '7-10' | '10+';
+  duration_bucket: '' | 'SHORT' | 'MID' | 'LONG';
+  extra_tags: string[];
   provider_name: string;
-  createdAt?: Date | string;
-  updatedAt?: Date | string;
+  createdAt?: any;
+  updatedAt?: any;
   relatedCount?: number;
   similarCount?: number; // 相似需求数量
   similarDemands?: Array<{ // 折叠的相似需求列表
@@ -386,15 +454,7 @@ type DemandCard = {
   favoriting?: boolean;
 };
 
-const BASE_MODULES = [
-  { code: 'ALL', name: '全部模块' },
-  { code: 'FI', name: 'FI/CO' },
-  { code: 'MM', name: 'MM' },
-  { code: 'SD', name: 'SD' },
-  { code: 'PP', name: 'PP' },
-  { code: 'WM', name: 'WM' },
-  { code: 'EWM', name: 'EWM' },
-]
+const BASE_MODULES = getSapModuleFilterOptions()
 
 const extraModules = ref<{ code: string; name: string }[]>([])
 
@@ -411,7 +471,7 @@ const modulesForUi = computed(() => {
   return out
 })
 
-const cities = ['全部', '上海', '北京', '深圳', '远程', '海外'];
+const cities = ['全部', '上海', '北京', '深圳', '全国', '远程', '海外', '欧洲', '菲律宾'];
 
 const activeModule = ref('ALL');
 const activeCity = ref('全部');
@@ -437,9 +497,11 @@ const timeFields: { value: TimeField; label: string }[] = [
 const activeTimeField = ref<TimeField>('CREATED')
 
 type RemoteMode = 'ALL' | 'REMOTE' | 'ONSITE'
-type YearRange = 'ALL' | '0-3' | '3-5' | '5-8' | '8+'
+type YearRange = 'ALL' | '0-3' | '4-6' | '7-10' | '10+'
 type DurationRange = 'ALL' | 'SHORT' | 'MID' | 'LONG'
 type LanguageOpt = 'ALL' | 'EN' | 'JP'
+
+type CooperationModeOpt = 'ALL' | string
 
 const remoteModes: { value: RemoteMode; label: string }[] = [
   { value: 'ALL', label: '全部' },
@@ -450,9 +512,9 @@ const remoteModes: { value: RemoteMode; label: string }[] = [
 const yearRanges: { value: YearRange; label: string }[] = [
   { value: 'ALL', label: '全部年限' },
   { value: '0-3', label: '0-3年' },
-  { value: '3-5', label: '3-5年' },
-  { value: '5-8', label: '5-8年' },
-  { value: '8+', label: '8年以上' },
+  { value: '4-6', label: '4-6年' },
+  { value: '7-10', label: '7-10年' },
+  { value: '10+', label: '10年以上' },
 ]
 
 const durationRanges: { value: DurationRange; label: string }[] = [
@@ -468,10 +530,23 @@ const languageOptions: { value: LanguageOpt; label: string }[] = [
   { value: 'JP', label: '日语' },
 ]
 
+const cooperationModes = computed(() => {
+  return [
+    { value: 'ALL' as CooperationModeOpt, label: '全部' },
+    { value: 'FREE' as CooperationModeOpt, label: 'Free' },
+    { value: '入职' as CooperationModeOpt, label: '入职' },
+    { value: '甲方入职' as CooperationModeOpt, label: '甲方入职' },
+    { value: '乙方入职' as CooperationModeOpt, label: '乙方入职' },
+    { value: '兼职' as CooperationModeOpt, label: '兼职' },
+    { value: '外包' as CooperationModeOpt, label: '外包' },
+  ]
+})
+
 const activeRemoteMode = ref<'ALL' | 'REMOTE' | 'ONSITE'>('ALL')
-const activeYearRange = ref<'ALL' | '0-3' | '3-5' | '5-8' | '8+'>('ALL')
+const activeYearRange = ref<'ALL' | '0-3' | '4-6' | '7-10' | '10+'>('ALL')
 const activeDurationRange = ref<'ALL' | 'SHORT' | 'MID' | 'LONG'>('ALL')
 const activeLanguage = ref<'ALL' | 'EN' | 'JP'>('ALL')
+const activeCooperationMode = ref<CooperationModeOpt>('ALL')
 
 const loading = ref(true)
 const allDemands = ref<DemandCard[]>([])
@@ -479,6 +554,7 @@ const useLocalFallback = ref(false)
 const isGuest = ref(false)
 const searchKeyword = ref('')
 const refreshingTags = ref(false) // 是否正在刷新标签
+const isAdmin = ref(false)
 const commentsByDemand = ref<
   Record<
     string,
@@ -492,47 +568,6 @@ const commentsByDemand = ref<
     }[]
   >
 >({})
-
-const SAP_MODULES = [
-  'FI',
-  'CO',
-  'FICO',
-  'S4',
-  'S4HANA',
-  'HANA',
-  'SD',
-  'MM',
-  'PP',
-  'QM',
-  'PM',
-  'WM',
-  'EWM',
-  'LE',
-  'LO',
-  'HR',
-  'HCM',
-  'SF',
-  'SUCCESSFACTORS',
-  'SAPCONCUR',
-  'CONCUR',
-  'SSF',
-  'PS',
-  'ABAP',
-  'BASIS',
-  'BW',
-  'BI',
-  'BO',
-  'BPC',
-  'BPC合并',
-  'SAC',
-  'FIORI',
-  'UI5',
-  'GRC',
-  'GTS',
-  'DRC',
-  'JAVA',
-]
-const SAP_MODULE_SET = new Set(SAP_MODULES.map((x) => String(x).toUpperCase()))
 
 const LOCATION_KEYWORDS = [
   '北京',
@@ -565,6 +600,7 @@ const LOCATION_KEYWORDS = [
   '宁波',
   '佛山',
   '东莞',
+  '全国',
   '海外',
   '欧洲',
   '印尼',
@@ -593,10 +629,8 @@ const extractModulesFromUnique = (d: SapUniqueDemandDoc): string[] => {
   tags.forEach((t) => {
     const key = String(t || '').trim()
     if (!key) return
-    const up = key.toUpperCase()
-    if (SAP_MODULE_SET.has(up)) {
-      if (!hit.includes(up)) hit.push(up)
-    }
+    const code = normalizeSapModuleToken(key)
+    if (code && !hit.includes(code)) hit.push(code)
   })
   return hit.length ? hit : []
 }
@@ -611,17 +645,21 @@ const extractCityFromUnique = (d: SapUniqueDemandDoc): string => {
   return ''
 }
 
-const MODULE_LABEL_MAP: Record<string, string> = {
-  FICO: 'FI/CO',
-  WM: 'WM',
-  EWM: 'EWM',
-  OTHER: '其他',
+const extractCityFromRawText = (rawText: string): string => {
+  const text = String(rawText || '').trim()
+  if (!text) return ''
+  if (/菲律宾|philippines/i.test(text)) return '菲律宾'
+  if (/欧洲|europe/i.test(text)) return '欧洲'
+  if (/海外|overseas|国外/i.test(text)) return '海外'
+  // 兜底：扫描国内城市/地区关键词（避免仅靠 tags/attrs 导致“合肥”等丢失）
+  for (const k of LOCATION_KEYWORDS) {
+    if (!k) continue
+    if (text.includes(k)) return k
+  }
+  return ''
 }
 
-const toModuleLabel = (code: string): string => {
-  const k = String(code || '').trim().toUpperCase()
-  return MODULE_LABEL_MAP[k] || k
-}
+const toModuleLabel = (code: string): string => sapModuleCodeToLabel(code)
 
 // 将云端或本地的原始记录映射到页面用的卡片类型
 const mapToCard = (item: any, index: number): DemandCard => ({
@@ -634,6 +672,11 @@ const mapToCard = (item: any, index: number): DemandCard => ({
   years_text: item.years_text,
   language: item.language,
   daily_rate: item.daily_rate,
+  is_remote: typeof item.is_remote === 'boolean' ? item.is_remote : null,
+  cooperation_mode: String(item.cooperation_mode || '').trim(),
+  years_bucket: (item.years_bucket === '0-3' || item.years_bucket === '4-6' || item.years_bucket === '7-10' || item.years_bucket === '10+') ? item.years_bucket : '',
+  duration_bucket: (item.duration_bucket === 'SHORT' || item.duration_bucket === 'MID' || item.duration_bucket === 'LONG') ? item.duration_bucket : '',
+  extra_tags: Array.isArray(item.extra_tags) ? item.extra_tags.map((x: any) => String(x || '').trim()).filter(Boolean) : [],
   provider_name: item.provider_name,
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
@@ -648,61 +691,8 @@ const mapToCard = (item: any, index: number): DemandCard => ({
 const computeRelatedCounts = async (cards: DemandCard[]) => {
   try {
     if (!cards.length) return
-    await ensureLogin()
-    const db = app.database()
-    const res = await db.collection('sap_demands_raw').orderBy('createdAt', 'desc').limit(1200).get()
-    const raws = (res.data || []) as any[]
-    if (!raws.length) return
-
-    const moduleToRaws = new Map<string, any[]>()
-    raws.forEach((r) => {
-      const mods = (r.module_codes || [])
-        .map((x: any) => String(x || '').trim().toUpperCase())
-        .filter(Boolean)
-      mods.forEach((m: string) => {
-        const list = moduleToRaws.get(m) || []
-        list.push(r)
-        moduleToRaws.set(m, list)
-      })
-    })
-
-    const normalizeText = (s: any) => String(s || '').replace(/\s+/g, ' ').trim()
-    const threshold = 0.85
-
     cards.forEach((card) => {
-      const mods = (card.module_codes || [])
-        .map((x) => String(x || '').trim().toUpperCase())
-        .filter(Boolean)
-
-      const candidates = new Map<string, any>()
-      mods.forEach((m) => {
-        const list = moduleToRaws.get(m) || []
-        list.forEach((r) => {
-          const rid = String(r._id || '')
-          if (!rid) return
-          if (!candidates.has(rid)) candidates.set(rid, r)
-        })
-      })
-
-      if (!candidates.size) {
-        card.relatedCount = 0
-        return
-      }
-
-      const base = normalizeText(card.raw_text)
-      let matches = 0
-      let hasExact = false
-      candidates.forEach((r) => {
-        const txt = normalizeText(r.raw_text)
-        if (!txt) return
-        const sim = calculateTextSimilarity(base, txt)
-        if (sim >= threshold) {
-          matches += 1
-          if (!hasExact && txt === base) hasExact = true
-        }
-      })
-
-      card.relatedCount = Math.max(0, matches - (hasExact ? 1 : 0))
+      card.relatedCount = 0
     })
   } catch (e) {
     console.error('Failed to compute related demands count:', e)
@@ -745,18 +735,68 @@ const loadFromCloud = async () => {
 
     const cards = (docs || []).map((d, idx) => {
       const rawText = String(d.raw_text || '').trim()
+      const attrs = (() => {
+        try {
+          const v: any = (d as any).attributes_json
+          if (!v) return null
+          if (typeof v === 'object') return v
+          const s = String(v || '').trim()
+          if (!s) return null
+          return JSON.parse(s)
+        } catch {
+          return null
+        }
+      })()
+
+      const tagsFromDoc = safeJsonArray((d as any).tags_json)
+
       const fromTags = extractModulesFromUnique(d)
       const parsed = parseDemandText(rawText)
-      const moduleCodes = (fromTags.length ? fromTags : parsed.module_codes || [])
-        .map((x) => String(x || '').trim().toUpperCase())
+      const moduleCodes = (
+        (attrs && Array.isArray((attrs as any).module_codes) ? (attrs as any).module_codes : null) ||
+        (fromTags.length ? fromTags : parsed.module_codes || [])
+      )
+        .map((x: any) => String(x || '').trim())
+        .map((x: string) => normalizeSapModuleToken(x) || String(x || '').trim().toUpperCase())
         .filter(Boolean)
       const moduleLabels = moduleCodes.map(toModuleLabel)
       const cityFromTags = extractCityFromUnique(d)
+      const cityFromAttrs = attrs ? String((attrs as any).city || '').trim() : ''
+      const cityFromRaw = extractCityFromRawText(rawText)
+      const durationFromAttrs = attrs ? String((attrs as any).duration_text || '').trim() : ''
+      const yearsFromAttrs = attrs ? String((attrs as any).years_text || '').trim() : ''
+      const languageFromAttrs = attrs ? String((attrs as any).language_tag || '').trim() : ''
+      const dailyRateFromAttrs = attrs ? String((attrs as any).daily_rate_text || '').trim() : ''
+      const isRemoteFromAttrs = attrs && Object.prototype.hasOwnProperty.call(attrs, 'is_remote') ? (attrs as any).is_remote : null
+      const yearsBucketFromAttrs = attrs ? String((attrs as any).years_bucket || '').trim() : ''
+      const durationBucketFromAttrs = attrs ? String((attrs as any).duration_bucket || '').trim() : ''
+      const cooperationModeFromAttrs = attrs ? String((attrs as any).cooperation_mode || '').trim() : ''
       const createdAt = (d as any).created_time || (d as any).message_time || null
       const updatedAt = (d as any).last_updated_time || (d as any).updated_at || null
       const rawId = (d as any)._id
       const localId = (d as any).local_id
       const id = String(rawId || (localId ? `ud_${localId}` : idx))
+
+      const extraTags = (() => {
+        const base = tagsFromDoc.map((x) => String(x || '').trim()).filter(Boolean)
+        const drop = new Set<string>()
+        moduleLabels.forEach((x) => drop.add(String(x || '').trim()))
+        if (cityFromAttrs) drop.add(cityFromAttrs)
+        if (durationFromAttrs) drop.add(durationFromAttrs)
+        if (yearsFromAttrs) drop.add(yearsFromAttrs)
+        if (languageFromAttrs) drop.add(languageFromAttrs)
+        if (dailyRateFromAttrs) drop.add(dailyRateFromAttrs)
+        if (cooperationModeFromAttrs) drop.add(cooperationModeFromAttrs)
+        const out: string[] = []
+        for (const t of base) {
+          if (!t) continue
+          if (drop.has(t)) continue
+          if (out.includes(t)) continue
+          out.push(t)
+          if (out.length >= 6) break
+        }
+        return out
+      })()
 
       return mapToCard(
         {
@@ -764,11 +804,20 @@ const loadFromCloud = async () => {
           raw_text: rawText,
           module_codes: moduleCodes,
           module_labels: moduleLabels,
-          city: cityFromTags || parsed.city || '',
-          duration_text: parsed.duration_text || '',
-          years_text: parsed.years_text || '',
-          language: parsed.language || '',
-          daily_rate: parsed.daily_rate || '',
+          city: (() => {
+            const base = cityFromAttrs || cityFromTags || parsed.city || ''
+            if (base === '海外' && (cityFromRaw === '欧洲' || cityFromRaw === '菲律宾')) return cityFromRaw
+            return base || cityFromRaw || ''
+          })(),
+          duration_text: durationFromAttrs || parsed.duration_text || '',
+          years_text: yearsFromAttrs || parsed.years_text || '',
+          language: languageFromAttrs || parsed.language || '',
+          daily_rate: dailyRateFromAttrs || parsed.daily_rate || '',
+          is_remote: typeof isRemoteFromAttrs === 'boolean' ? isRemoteFromAttrs : null,
+          cooperation_mode: cooperationModeFromAttrs,
+          years_bucket: (yearsBucketFromAttrs === '0-3' || yearsBucketFromAttrs === '4-6' || yearsBucketFromAttrs === '7-10' || yearsBucketFromAttrs === '10+') ? (yearsBucketFromAttrs as any) : '',
+          duration_bucket: (durationBucketFromAttrs === 'SHORT' || durationBucketFromAttrs === 'MID' || durationBucketFromAttrs === 'LONG') ? (durationBucketFromAttrs as any) : '',
+          extra_tags: extraTags,
           provider_name: (d as any).publisher_name || '未知',
           createdAt,
           updatedAt,
@@ -863,16 +912,13 @@ const loadCommentsForDemands = async () => {
     const ids = allDemands.value.map((d) => d.id).filter(Boolean)
     if (!ids.length) return
 
-    const db = app.database()
-    const res = await db
-      .collection('sap_demand_comments')
-      .where({
-        demand_id: db.command.in(ids),
-      })
-      .orderBy('likes', 'desc')
-      .orderBy('createdAt', 'desc')
-      .limit(100)
-      .get()
+    const base = String(API_BASE).replace(/\/+$/, '')
+    const resp: any = await requestJson({
+      url: `${base}/demand_comments?demandIds=${encodeURIComponent(ids.join(','))}&limit=200`,
+      method: 'GET',
+    })
+
+    const rows: any[] = resp && resp.ok && Array.isArray(resp.comments) ? resp.comments : []
 
     const map: Record<
       string,
@@ -886,7 +932,7 @@ const loadCommentsForDemands = async () => {
       }[]
     > = {}
 
-    ;(res.data || []).forEach((doc: any) => {
+    ;(rows || []).forEach((doc: any) => {
       const dId = doc.demand_id
       if (!dId) return
       if (!map[dId]) map[dId] = []
@@ -930,8 +976,27 @@ onUnmounted(() => {
   uni.$off('favoriteChanged')
 })
 
-// 页面显示时刷新数据（从发布页返回时会触发）
-onShow(() => {
+const refreshAuthState = async () => {
+  try {
+    const prevGuest = !!isGuest.value
+    const state: any = await ensureLogin()
+    const nextGuest = !!(state && isGuestUser(state.user))
+    isGuest.value = nextGuest
+    isAdmin.value = isAdminUid(String((state && state.user && (state.user as any).uid) || '').trim())
+
+    // When switching from guest -> logged-in, refresh list so favorites/status become interactive.
+    if (prevGuest && !nextGuest) {
+      await loadFromCloud()
+    }
+  } catch {
+    isGuest.value = false
+    isAdmin.value = false
+  }
+}
+
+// 页面显示时刷新数据（从登录/发布页返回时会触发）
+onShow(async () => {
+  await refreshAuthState()
   // 如果已经有数据，刷新列表（避免首次加载时重复加载）
   if (allDemands.value.length > 0 || !loading.value) {
     loadFromCloud()
@@ -973,12 +1038,7 @@ watch(activeTimeRange, () => {
 })
 
 onMounted(async () => {
-  try {
-    const state: any = await ensureLogin()
-    isGuest.value = !!(state && isGuestUser(state.user))
-  } catch {
-    isGuest.value = false
-  }
+  await refreshAuthState()
 })
 
 onLoad((options) => {
@@ -1011,14 +1071,15 @@ const filteredDemands = computed(() => {
   const normalizeModuleKeys = (mUp: string): string[] => {
     const base = String(mUp || '').trim().toUpperCase()
     if (!base) return []
-    if (base === 'FI/CO' || base === 'FI-CO' || base === 'FI CO') return ['FICO', 'FI', 'CO', base]
-    if (base === 'EWM/WM' || base === 'EWM-WM' || base === 'EWM WM') return ['EWM', 'WM', base]
+    const code = normalizeSapModuleToken(base)
+    if (code) return [code]
     if (base.includes('/')) {
       const parts = base
         .split('/')
         .map((x) => String(x || '').trim().toUpperCase())
         .filter(Boolean)
-      return Array.from(new Set([base, ...parts]))
+      const codes = parts.map((p) => normalizeSapModuleToken(p)).filter(Boolean)
+      return Array.from(new Set([...codes, base]))
     }
     return [base]
   }
@@ -1049,68 +1110,57 @@ const filteredDemands = computed(() => {
     const byCity =
       activeCity.value === '全部' || d.city === activeCity.value
 
-    const isRemote =
-      d.city === '远程' ||
-      d.raw_text.includes('远程') ||
-      d.raw_text.includes('remote') ||
-      d.raw_text.includes('海外')
-
     const byRemote =
       activeRemoteMode.value === 'ALL' ||
-      (activeRemoteMode.value === 'REMOTE' && isRemote) ||
-      (activeRemoteMode.value === 'ONSITE' && !isRemote)
+      (activeRemoteMode.value === 'REMOTE' && d.is_remote === true) ||
+      (activeRemoteMode.value === 'ONSITE' && d.is_remote === false)
 
-    const years = d.years_text || ''
-    const yearNumMatch = years.match(/\d+/)
-    const yearNum = yearNumMatch ? parseInt(yearNumMatch[0], 10) : null
+    const byYears =
+      activeYearRange.value === 'ALL' ||
+      (d.years_bucket && d.years_bucket === activeYearRange.value)
 
-    let byYears = true
-    if (activeYearRange.value !== 'ALL' && yearNum !== null) {
-      if (activeYearRange.value === '0-3') byYears = yearNum <= 3
-      else if (activeYearRange.value === '3-5') byYears = yearNum >= 3 && yearNum <= 5
-      else if (activeYearRange.value === '5-8') byYears = yearNum >= 5 && yearNum <= 8
-      else if (activeYearRange.value === '8+') byYears = yearNum >= 8
-    }
+    const byDuration =
+      activeDurationRange.value === 'ALL' ||
+      (d.duration_bucket && d.duration_bucket === activeDurationRange.value)
 
-    const dur = d.duration_text || d.raw_text
-    let byDuration = true
-    if (activeDurationRange.value === 'SHORT') {
-      byDuration = /1|2|3/.test(dur) && /月/.test(dur) && !/6|12/.test(dur)
-    } else if (activeDurationRange.value === 'MID') {
-      byDuration = /3|4|5|6/.test(dur) && /月/.test(dur)
-    } else if (activeDurationRange.value === 'LONG') {
-      byDuration = /半年|6个月以上|1年|长期/.test(dur)
-    }
-
-    const lang = d.language || d.raw_text
     let byLang = true
-    if (activeLanguage.value === 'EN') {
-      byLang = /英/.test(lang)
-    } else if (activeLanguage.value === 'JP') {
-      byLang = /日语/.test(lang)
-    }
+    if (activeLanguage.value === 'EN') byLang = d.language === '英语'
+    else if (activeLanguage.value === 'JP') byLang = d.language === '日语'
+
+    const byCooperation = (() => {
+      const active = String(activeCooperationMode.value || '').trim()
+      if (!active || active === 'ALL') return true
+      const val = String(d.cooperation_mode || '').trim()
+      if (!val) return false
+      if (active === '入职') return val === '入职' || val === '甲方入职' || val === '乙方入职'
+      return val === active
+    })()
 
     // 搜索过滤
     let bySearch = true
     if (searchKeyword.value.trim()) {
       const keyword = searchKeyword.value.trim().toLowerCase()
       const searchText = (
-        d.raw_text +
+        String(d.raw_text || '') +
         ' ' +
-        (d.module_labels || []).join(' ') +
+        String((d.module_labels || []).join(' ') || '') +
         ' ' +
-        d.city +
+        String((d.module_codes || []).join(' ') || '') +
         ' ' +
-        (d.duration_text || '') +
+        String(d.city || '') +
         ' ' +
-        (d.years_text || '') +
+        String(d.duration_text || '') +
         ' ' +
-        (d.language || '')
+        String(d.years_text || '') +
+        ' ' +
+        String(d.language || '') +
+        ' ' +
+        String(d.cooperation_mode || '')
       ).toLowerCase()
       bySearch = searchText.includes(keyword)
     }
 
-    return byModule && byTime && byCity && byRemote && byYears && byDuration && byLang && bySearch
+    return byModule && byTime && byCity && byRemote && byYears && byDuration && byLang && byCooperation && bySearch
   })
 
   const pickSortTs = (card: any): number => {
@@ -1124,8 +1174,19 @@ const filteredDemands = computed(() => {
 });
 
 // 搜索处理
-const handleSearch = () => {
-  // 搜索逻辑已在 computed 中实现，这里可以添加其他逻辑（如搜索历史等）
+const handleSearch = (e?: any) => {
+  const v = e && e.detail && typeof e.detail.value !== 'undefined' ? e.detail.value : undefined
+  if (typeof v !== 'undefined') {
+    searchKeyword.value = String(v)
+  }
+}
+
+const triggerSearch = () => {
+  try {
+    uni.hideKeyboard()
+  } catch {
+    return
+  }
 }
 
 // 清除搜索
@@ -1153,7 +1214,11 @@ const setRemoteMode = (val: 'ALL' | 'REMOTE' | 'ONSITE') => {
   activeRemoteMode.value = val
 }
 
-const setYearRange = (val: 'ALL' | '0-3' | '3-5' | '5-8' | '8+') => {
+const setCooperationMode = (val: CooperationModeOpt) => {
+  activeCooperationMode.value = val
+}
+
+const setYearRange = (val: 'ALL' | '0-3' | '4-6' | '7-10' | '10+') => {
   activeYearRange.value = val
 }
 
@@ -1220,6 +1285,19 @@ const goToPublish = async () => {
   } catch {
     return
   }
+}
+
+const goToAccount = async () => {
+  try {
+    const state: any = await ensureLogin()
+    const user = state && state.user
+    if (user && !isGuestUser(user)) {
+      uni.navigateTo({ url: '/pages/profile/profile' })
+      return
+    }
+  } catch {}
+
+  uni.navigateTo({ url: '/pages/login/password-login' })
 }
 
 // 格式化人天价格显示
@@ -1418,18 +1496,11 @@ const refreshCardReliabilityData = async (card: DemandCard) => {
 // 刷新所有需求的标签
 const handleRefreshTags = async () => {
   if (refreshingTags.value) return
-
-  uni.showToast({
-    title: '刷新标签功能已下线',
-    icon: 'none',
-    duration: 2500,
-  })
-  return
   
   const confirm = await new Promise<boolean>((resolve) => {
     uni.showModal({
       title: '刷新需求标签',
-      content: '将使用新的识别规则重新解析所有需求的标签（地区、人天价格等）。\n\n此操作可能需要一些时间，是否继续？',
+      content: '将使用新的识别规则重新解析近90天需求的标签（地区、人天价格等）。\n\n此操作可能需要一些时间，是否继续？',
       confirmText: '开始刷新',
       cancelText: '取消',
       success: (res) => {
@@ -1508,6 +1579,18 @@ const handleRefreshTags = async () => {
   align-items: center;
 }
 
+.icon-btn {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 999rpx;
+  background: rgba(245, 241, 232, 0.10);
+  border: 2rpx solid rgba(245, 241, 232, 0.16);
+  margin-left: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .refresh-btn {
   padding: 12rpx 24rpx;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
@@ -1568,17 +1651,64 @@ const handleRefreshTags = async () => {
   position: relative;
   margin: 16rpx 0;
   padding: 0 20rpx;
+  z-index: 9999;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 
 .search-input {
-  width: 100%;
-  padding: 20rpx 60rpx 20rpx 24rpx;
+  flex: 1;
+  width: auto;
+  padding: 20rpx 72rpx 20rpx 24rpx;
   background: rgba(255, 255, 255, 0.1);
-  border: 1rpx solid rgba(255, 255, 255, 0.2);
+  border: 1rpx solid rgba(244, 162, 89, 0.65);
   border-radius: 24rpx;
   font-size: 26rpx;
   color: #e4edf7;
   box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.search-input:focus {
+  border-color: #f4a259;
+}
+
+.search-input :deep(input),
+.search-input :deep(.uni-input-input) {
+  width: 100%;
+  height: 100%;
+  min-height: 44rpx;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: inherit;
+}
+
+.search-input :deep(.uni-input-placeholder) {
+  color: #94a3b8;
+}
+
+.search-action {
+  position: relative;
+  height: 44rpx;
+  padding: 0 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  background: rgba(59, 130, 246, 0.25);
+  border: 1rpx solid rgba(59, 130, 246, 0.45);
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.search-action-text {
+  font-size: 22rpx;
+  color: #bfdbfe;
+  font-weight: 600;
 }
 
 .search-input::placeholder {
@@ -1587,7 +1717,7 @@ const handleRefreshTags = async () => {
 
 .search-clear {
   position: absolute;
-  right: 40rpx;
+  right: 160rpx;
   top: 50%;
   transform: translateY(-50%);
   width: 40rpx;
@@ -1597,6 +1727,8 @@ const handleRefreshTags = async () => {
   justify-content: center;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.2);
+  z-index: 2;
+  pointer-events: auto;
 }
 
 .search-clear-text {
@@ -1612,6 +1744,8 @@ const handleRefreshTags = async () => {
   background-color: rgba(10, 16, 25, 0.9);
   box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.45);
   white-space: nowrap;
+  position: relative;
+  z-index: 1;
 }
 
 .card-comments-strip {
@@ -1676,7 +1810,10 @@ const handleRefreshTags = async () => {
 }
 
 .chip {
-  padding: 6rpx 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rpx 14rpx;
   border-radius: 999rpx;
   background-color: rgba(25, 58, 86, 0.9);
   margin-right: 12rpx;
@@ -1701,11 +1838,14 @@ const handleRefreshTags = async () => {
 .chip-text {
   font-size: 22rpx;
   color: #edf1f7;
+  white-space: nowrap;
 }
 
 .card-list {
   flex: 1;
   margin-top: 20rpx;
+  position: relative;
+  z-index: 0;
 }
 
 .demand-card {

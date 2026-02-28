@@ -32,11 +32,10 @@ export function parseDemandText(rawText: string): {
     { pattern: /bi|商业智能/i, code: 'BI' },
     { pattern: /bw|数据仓库/i, code: 'BW' },
     { pattern: /abap|开发/i, code: 'ABAP' },
-    { pattern: /fiori|菲奥里/i, code: 'OTHER' },
-    { pattern: /pm|设备|维护/i, code: 'OTHER' },
-    { pattern: /ps|项目|系统/i, code: 'OTHER' },
-    { pattern: /mdg|主数据/i, code: 'OTHER' },
-    { pattern: /供应链|顾问/i, code: 'OTHER' },
+    { pattern: /fiori|菲奥里/i, code: 'FIORI' },
+    { pattern: /pm|设备|维护/i, code: 'PM' },
+    { pattern: /ps|项目(?!周期)|project\s*system/i, code: 'PS' },
+    { pattern: /mdg|主数据/i, code: 'MDG' },
   ]
   
   modulePatterns.forEach(({ pattern, code }) => {
@@ -47,8 +46,10 @@ export function parseDemandText(rawText: string): {
   
   // 如果没有识别到模块，尝试识别"其他"
   if (module_codes.length === 0) {
-    // 检查是否包含 SAP 相关关键词
-    if (/sap|顾问|需求|项目/i.test(text)) {
+    // 仅在明确 SAP 相关且具有“模块/岗位/顾问”语境时才兜底 OTHER
+    const hasSapSignal = /\bsap\b|\bs\/4\b|\bec\b/i.test(text) || /SAP|S\/4|ECC/i.test(text)
+    const hasModuleContext = /模块|顾问|岗位|要人|资源|招聘|找人|寻找|寻人|实施|运维|支持|support|consultant/i.test(text)
+    if (hasSapSignal && hasModuleContext) {
       module_codes.push('OTHER')
     }
   }
@@ -84,6 +85,9 @@ export function parseDemandText(rawText: string): {
     'nj': '南京',
     '苏州': '苏州',
     'suzhou': '苏州',
+    '合肥': '合肥',
+    'hefei': '合肥',
+    '全国': '全国',
     '远程': '远程',
     'remote': '远程',
     '在家': '远程',
@@ -91,8 +95,11 @@ export function parseDemandText(rawText: string): {
     '海外': '海外',
     'overseas': '海外',
     '国外': '海外',
-    '欧洲': '海外',
-    'europe': '海外',
+    '欧洲': '欧洲',
+    'europe': '欧洲',
+    '菲律宾': '菲律宾',
+    '菲利宾': '菲律宾',
+    'philippines': '菲律宾',
   }
   
   // 省份映射
@@ -183,9 +190,6 @@ export function parseDemandText(rawText: string): {
     } else if (provinceMap[secondCity] || cityMap[secondCity]) {
       // 如果第一个不是，检查第二个
       city = provinceMap[secondCity] || cityMap[secondCity] || secondCity
-    } else {
-      // 都不匹配，使用第一个
-      city = firstCity
     }
   }
   
@@ -210,47 +214,164 @@ export function parseDemandText(rawText: string): {
   
   // 4. 识别项目周期
   let duration_text = ''
-  const durationPatterns = [
-    { pattern: /长期|永久|持续/i, text: '长期' },
-    { pattern: /(\d+)\s*年|(\d+)\s*year/i, match: (m: RegExpMatchArray) => `${m[1] || m[2]}年` },
-    { pattern: /(\d+)\s*个月|(\d+)\s*month/i, match: (m: RegExpMatchArray) => `${m[1] || m[2]}个月` },
-    { pattern: /半年|6个月/i, text: '6个月' },
-    { pattern: /短期|(\d+)\s*周/i, match: (m: RegExpMatchArray) => m[1] ? `${m[1]}周` : '短期' },
+  const durationPatterns: Array<{ pattern: RegExp; text?: string; match?: (m: RegExpMatchArray) => string; allow?: (m: RegExpMatchArray) => boolean }> = [
+    { pattern: /长期|永久|持续|长期项目/i, text: '长期' },
+    // 6-12个月 / 6~12个月 / 6到12个月
+    {
+      pattern: /(\d{1,2})\s*(?:[-—~～到至])\s*(\d{1,2})\s*(?:个)?月/i,
+      match: (m) => `${m[1]}-${m[2]}个月`,
+    },
+    // 3+3个月 / 3 + 3月
+    {
+      pattern: /(\d{1,2})\s*\+\s*(\d{1,2})\s*(?:个)?月/i,
+      match: (m) => `${m[1]}+${m[2]}个月`,
+    },
+    // 半年
+    { pattern: /半年/i, text: '6个月' },
+    // 12个月 / 12 month
+    { pattern: /(\d{1,2})\s*个月/i, match: (m) => `${m[1]}个月` },
+    { pattern: /(\d{1,2})\s*month/i, match: (m) => `${m[1]}个月` },
+    // “3月”可能是日期（3月份到岗）也可能被写作周期（为期3月）。默认不认作周期，只有强语境才识别。
+    {
+      pattern: /(\d{1,2})\s*月/i,
+      match: (m) => `${m[1]}个月`,
+      allow: (m) => {
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 12)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        // 日期/到岗月份语境：不应当作周期
+        if (/到岗|入场|入职|onboard|上岗|开始|进场|月份|日期|月初|月中|月末|\bmar\b|\bapr\b/i.test(ctx)) return false
+        // 周期/工期语境：才认作周期
+        return /周期|工期|合同|为期|项目|时长|duration/i.test(ctx)
+      },
+    },
+    // 周期：8周
+    { pattern: /(\d{1,2})\s*周/i, match: (m) => `${m[1]}周` },
+    // 天：30天（较少见，但有些会写）
+    { pattern: /(\d{1,3})\s*天/i, match: (m) => `${m[1]}天` },
+    // 中文年：一年/两年/二年/一年左右/一年半（仅在项目周期语境才视为周期）
+    {
+      pattern: /(一|二|两)\s*年\s*(半)?\s*(?:左右|多|\+|以上|及以上|起)?/i,
+      match: (m) => {
+        const cn = String(m[1] || '').trim()
+        const half = !!m[2]
+        const y = cn === '二' || cn === '两' ? 2 : 1
+        if (half) return `${y * 12 + 6}个月`
+        return `${y}年`
+      },
+      allow: (m) => {
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 12)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        if (/(?:\d{1,2}|一|二|两)\s*年\s*(?:以上|及以上|\+)?\s*(?:年经验|工作经验)/i.test(ctx)) return false
+        if (/年经验|工作经验/i.test(ctx)) return false
+        if (/项目|周期|工期|合同|预计|时长|到岗|开始|结束|为期|duration/i.test(ctx)) return true
+        return /项目|周期|工期|合同|预计|时长|到岗|开始|结束|为期|duration/i.test(text)
+      },
+    },
+    // 年：仅在“项目/周期/合同/预计/工期”等语境出现时才视为周期，避免把“3年经验”识别成周期
+    {
+      pattern: /(\d{1,2})\s*年|(\d{1,2})\s*year/i,
+      match: (m) => `${m[1] || m[2]}年`,
+      allow: (m) => {
+        const y = Number(m[1] || m[2] || 0)
+        // 周期一般不超过 2 年：>=3 年更可能是经验年限
+        if (!Number.isFinite(y) || y >= 3) return false
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 12)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        if (/(?:\d{1,2})\s*年\s*(?:以上|及以上|\+)?\s*(?:年经验|工作经验)/i.test(ctx)) return false
+        if (/年经验|工作经验/i.test(ctx)) return false
+        if (/项目|周期|工期|合同|预计|时长|到岗|开始|结束|为期|duration/i.test(ctx)) return true
+        return /项目|周期|工期|合同|预计|时长|到岗|开始|结束|为期|duration/i.test(text)
+      },
+    },
+    { pattern: /短期/i, text: '短期' },
   ]
-  
-  for (const { pattern, text: dt, match } of durationPatterns) {
+
+  for (const { pattern, text: dt, match, allow } of durationPatterns) {
     const result = text.match(pattern)
-    if (result) {
-      if (match) {
-        duration_text = match(result)
-      } else if (dt) {
-        duration_text = dt
-      }
-      break
-    }
+    if (!result) continue
+    if (allow && !allow(result)) continue
+    if (match) duration_text = match(result)
+    else if (dt) duration_text = dt
+    if (duration_text) break
   }
   
   // 5. 识别年限要求
   let years_text = ''
-  const yearsPatterns = [
-    { pattern: /(\d+)\s*年以上|(\d+)\s*年\+|(\d+)\s*years?\s*\+/i, match: (m: RegExpMatchArray) => `${m[1] || m[2] || m[3]}年以上` },
-    { pattern: /(\d+)\s*-\s*(\d+)\s*年|(\d+)\s*-\s*(\d+)\s*years?/i, match: (m: RegExpMatchArray) => `${m[1] || m[3]}-${m[2] || m[4]}年` },
-    { pattern: /(\d+)\s*年|(\d+)\s*years?/i, match: (m: RegExpMatchArray) => {
-      const years = parseInt(m[1] || m[2])
-      if (years >= 8) return `${years}年以上`
-      if (years >= 5) return `5-${years}年`
-      if (years >= 3) return `3-${years}年`
-      return `${years}年`
-    }},
-    { pattern: /(\d+)\s*\+/i, match: (m: RegExpMatchArray) => `${m[1]}年以上` },
+  const yearsPatterns: Array<{ pattern: RegExp; match: (m: RegExpMatchArray) => string; allow?: (m: RegExpMatchArray) => boolean }> = [
+    // 3年经验 / 3 年工作经验：明确经验表达，优先级最高（不受“周期/合同”等词影响）
+    {
+      pattern: /(\d{1,2})\s*年\s*(?:以上|及以上|\+)?\s*(?:经验|工作经验|年经验|exp)/i,
+      match: (m) => {
+        const years = parseInt(m[1] || '0')
+        if (!Number.isFinite(years) || years <= 0) return ''
+        if (years >= 8) return `${years}年以上`
+        return `${years}年`
+      },
+    },
+    // 8+经验 / 8＋经验
+    {
+      pattern: /(\d{1,2})\s*[\+＋]\s*(?:年)?\s*(?:经验|工作经验|exp)/i,
+      match: (m) => `${m[1]}年以上`,
+    },
+    {
+      pattern: /(\d+)\s*年以上|(\d+)\s*年\+|(\d+)\s*years?\s*\+/i,
+      match: (m) => `${m[1] || m[2] || m[3]}年以上`,
+    },
+    {
+      pattern: /(\d+)\s*-\s*(\d+)\s*年|(\d+)\s*-\s*(\d+)\s*years?/i,
+      match: (m) => `${m[1] || m[3]}-${m[2] || m[4]}年`,
+    },
+    // 通用 X年：需要排除“周期/合同/项目/工期”等语境，避免把周期识别成经验
+    {
+      pattern: /(\d+)\s*年|(\d+)\s*years?/i,
+      match: (m) => {
+        const years = parseInt(m[1] || m[2])
+        if (years >= 8) return `${years}年以上`
+        if (years >= 5) return `5-${years}年`
+        if (years >= 3) return `3-${years}年`
+        return `${years}年`
+      },
+      allow: (m) => {
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 12)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        // 周期/合同等不视为经验年限
+        if (/周期|工期|合同|项目|时长|duration/i.test(ctx)) return false
+        return true
+      },
+    },
+    // 8+（无“年”）但紧跟经验关键词的情况已在第一条覆盖；这里保留兜底
+    {
+      pattern: /(\d+)\s*[\+＋]/i,
+      match: (m) => `${m[1]}年以上`,
+      allow: (m) => {
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 6)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        return /经验|工作经验|年限|exp/i.test(ctx)
+      },
+    },
   ]
-  
-  for (const { pattern, match } of yearsPatterns) {
+
+  for (const { pattern, match, allow } of yearsPatterns) {
     const result = text.match(pattern)
-    if (result && match) {
-      years_text = match(result)
-      break
-    }
+    if (!result) continue
+    if (allow && !allow(result)) continue
+    years_text = match(result)
+    if (years_text) break
   }
   
   // 6. 识别语言要求
@@ -273,44 +394,46 @@ export function parseDemandText(rawText: string): {
   
   // 7. 识别人天价格
   let daily_rate = ''
-  // 匹配 "人天2000"、"人天 2000"、"人天：2000" 等格式
+  const dailyRatePattern0 = /\brate\s*(\d{3,5})\s*(?:(?:[-—~～到至])\s*(\d{3,5}))?/i
   const dailyRatePattern1 = /人天[：:：\s]*(\d+(?:\.\d+)?)\s*(?:k|K|千)?/i
-  // 匹配 "1.4K=1400"、"1.4K = 1400" 等格式
   const dailyRatePattern2 = /(\d+(?:\.\d+)?)\s*k\s*[=＝]\s*(\d+)/i
-  // 匹配 "2000/天"、"2000/日"、"2000元/天" 等格式
   const dailyRatePattern3 = /(\d+(?:\.\d+)?)\s*(?:k|K|千)?\s*(?:元)?\s*[\/／]\s*(?:天|日)/i
-  // 匹配 "2000元/人天"、"2000/人天" 等格式
   const dailyRatePattern4 = /(\d+(?:\.\d+)?)\s*(?:k|K|千)?\s*(?:元)?\s*[\/／]\s*人天/i
   
-  let match = text.match(dailyRatePattern1)
+  let match = text.match(dailyRatePattern0)
   if (match) {
-    let rate = parseFloat(match[1])
-    // 如果后面有K，乘以1000
-    if (/k|K|千/i.test(match[0])) {
-      rate = rate * 1000
-    }
-    daily_rate = Math.round(rate).toString()
+    daily_rate = match[1]
   } else {
-    match = text.match(dailyRatePattern2)
+    match = text.match(dailyRatePattern1)
     if (match) {
-      // 使用等号后面的值
-      daily_rate = match[2]
+      let rate = parseFloat(match[1])
+      // 如果后面有K，乘以1000
+      if (/k|K|千/i.test(match[0])) {
+        rate = rate * 1000
+      }
+      daily_rate = Math.round(rate).toString()
     } else {
-      match = text.match(dailyRatePattern3)
+      match = text.match(dailyRatePattern2)
       if (match) {
-        let rate = parseFloat(match[1])
-        if (/k|K|千/i.test(match[0])) {
-          rate = rate * 1000
-        }
-        daily_rate = Math.round(rate).toString()
+        // 使用等号后面的值
+        daily_rate = match[2]
       } else {
-        match = text.match(dailyRatePattern4)
+        match = text.match(dailyRatePattern3)
         if (match) {
           let rate = parseFloat(match[1])
           if (/k|K|千/i.test(match[0])) {
             rate = rate * 1000
           }
           daily_rate = Math.round(rate).toString()
+        } else {
+          match = text.match(dailyRatePattern4)
+          if (match) {
+            let rate = parseFloat(match[1])
+            if (/k|K|千/i.test(match[0])) {
+              rate = rate * 1000
+            }
+            daily_rate = Math.round(rate).toString()
+          }
         }
       }
     }

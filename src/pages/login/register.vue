@@ -107,6 +107,22 @@ const goBackOrHome = () => {
   }
 }
 
+const redirectToPasswordLogin = (prefill?: string) => {
+  const q = prefill ? `?identifier=${encodeURIComponent(String(prefill || '').trim())}` : ''
+  const url = `/pages/login/password-login${q}`
+  try {
+    uni.redirectTo({ url })
+  } catch {
+    try {
+      uni.reLaunch({ url })
+    } catch {
+      try {
+        uni.navigateTo({ url })
+      } catch {}
+    }
+  }
+}
+
 const identifier = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -187,7 +203,7 @@ const handleRegister = async () => {
 
     uni.showToast({ title: '注册成功', icon: 'success' })
     setTimeout(() => {
-      goBackOrHome()
+      redirectToPasswordLogin(identifier.value.trim())
     }, 800)
   } catch (e: any) {
     uni.showToast({ title: String(e?.message || '注册失败'), icon: 'none' })

@@ -33,18 +33,9 @@
     "build:quickapp-webview": "uni build -p quickapp-webview",
     "build:quickapp-webview-huawei": "uni build -p quickapp-webview-huawei",
     "build:quickapp-webview-union": "uni build -p quickapp-webview-union",
-    "type-check": "vue-tsc --noEmit",
-    "sync:unique-demands": "node sap-message-capture/tools/sync_unique_demands_to_cloudbase.cjs",
-    "sync:demands-raw": "node sap-message-capture/tools/sync_parsed_demands_to_cloudbase.cjs",
-    "sync:local-tags": "node sap-message-capture/tools/sync_local_tags_to_cloudbase.cjs",
-    "sync:providers-users": "node sap-message-capture/tools/sync_providers_cache_to_cloudbase_users.cjs",
-    "seed:demo": "node sap-message-capture/tools/seed_demo_data_to_cloudbase.cjs",
-    "clear:demo": "node sap-message-capture/tools/clear_demo_data_to_cloudbase.cjs"
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@cloudbase/adapter-uni-app": "^1.0.0-beta.1",
-    "@cloudbase/js-sdk": "latest",
-    "@cloudbase/node-sdk": "^2.7.0",
     "@dcloudio/uni-app": "3.0.0-4060620250520001",
     "@dcloudio/uni-app-harmony": "3.0.0-4060620250520001",
     "@dcloudio/uni-app-plus": "3.0.0-4060620250520001",

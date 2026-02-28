@@ -2,8 +2,58 @@
  * 私信功能工具函数
  */
 
-import { app, requireNonGuest } from './cloudbase'
 import { getOrCreateUserProfile, getProfilesByIds } from './user'
+
+function getApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+    }
+  } catch {
+    // ignore
+  }
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function requestJson<T = any>(opts: {
+  url: string
+  method?: 'GET' | 'POST'
+  data?: any
+  header?: any
+}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const storedToken = getStoredToken()
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 /**
  * 发送私信
@@ -13,94 +63,53 @@ export async function sendMessage(
   content: string,
   demandId?: string
 ): Promise<void> {
-  await requireNonGuest()
   const user = await getOrCreateUserProfile()
-  const db = app.database()
-  
-  await db.collection('messages').add({
-    from_user_id: user.uid,
-    to_user_id: toUserId,
-    content: content.trim(),
-    demand_id: demandId || '',
-    is_read: false,
-    createdAt: new Date(),
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/messages/send`,
+    method: 'POST',
+    data: {
+      toUserId,
+      content: String(content || '').trim(),
+      demandId: demandId || '',
+    },
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
   })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'SEND_MESSAGE_FAILED')
+  }
 }
 
 /**
  * 获取对话列表（当前用户的所有对话）
  */
 export async function getConversations(): Promise<any[]> {
-  await requireNonGuest()
   const user = await getOrCreateUserProfile()
-  const db = app.database()
-  
-  // 获取所有发送和接收的消息
-  const [sent, received] = await Promise.all([
-    db
-      .collection('messages')
-      .where({
-        from_user_id: user.uid,
-      })
-      .orderBy('createdAt', 'desc')
-      .get(),
-    db
-      .collection('messages')
-      .where({
-        to_user_id: user.uid,
-      })
-      .orderBy('createdAt', 'desc')
-      .get(),
-  ])
-  
-  // 构建对话映射（按对方用户ID分组）
-  const conversationMap = new Map<string, any>()
-  
-  // 处理发送的消息
-  ;(sent.data || []).forEach((msg: any) => {
-    const otherUserId = msg.to_user_id
-    if (!conversationMap.has(otherUserId)) {
-      conversationMap.set(otherUserId, {
-        other_user_id: otherUserId,
-        last_message: msg,
-        unread_count: 0,
-      })
-    } else {
-      const conv = conversationMap.get(otherUserId)
-      if (new Date(msg.createdAt) > new Date(conv.last_message.createdAt)) {
-        conv.last_message = msg
-      }
-    }
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/messages/conversations`,
+    method: 'GET',
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
   })
-  
-  // 处理接收的消息
-  ;(received.data || []).forEach((msg: any) => {
-    const otherUserId = msg.from_user_id
-    if (!conversationMap.has(otherUserId)) {
-      conversationMap.set(otherUserId, {
-        other_user_id: otherUserId,
-        last_message: msg,
-        unread_count: msg.is_read ? 0 : 1,
-      })
-    } else {
-      const conv = conversationMap.get(otherUserId)
-      if (new Date(msg.createdAt) > new Date(conv.last_message.createdAt)) {
-        conv.last_message = msg
-      }
-      if (!msg.is_read) {
-        conv.unread_count += 1
-      }
-    }
-  })
-  
+
+  if (!resp || !resp.ok || !Array.isArray(resp.conversations)) {
+    throw new Error((resp && resp.error) || 'GET_CONVERSATIONS_FAILED')
+  }
+
+  const conversations = resp.conversations as any[]
+
   // 获取对方用户信息
-  const conversations = Array.from(conversationMap.values())
-  const userIds = conversations.map(c => c.other_user_id)
-  
+  const userIds = conversations.map((c) => String(c && c.other_user_id ? c.other_user_id : '').trim()).filter(Boolean)
   if (userIds.length > 0) {
     const profilesById = await getProfilesByIds(userIds)
-
-    conversations.forEach(conv => {
+    conversations.forEach((conv) => {
       const pid = String(conv.other_user_id || '').trim()
       conv.other_user = (pid && profilesById[pid]) || {
         nickname: '未知用户',
@@ -108,14 +117,7 @@ export async function getConversations(): Promise<any[]> {
       }
     })
   }
-  
-  // 按最后消息时间排序
-  conversations.sort((a, b) => {
-    const timeA = new Date(a.last_message.createdAt).getTime()
-    const timeB = new Date(b.last_message.createdAt).getTime()
-    return timeB - timeA
-  })
-  
+
   return conversations
 }
 
@@ -123,54 +125,22 @@ export async function getConversations(): Promise<any[]> {
  * 获取与指定用户的对话消息
  */
 export async function getMessagesWithUser(otherUserId: string): Promise<any[]> {
-  await requireNonGuest()
   const user = await getOrCreateUserProfile()
-  const db = app.database()
-  
-  // 获取所有相关消息
-  const [sent, received] = await Promise.all([
-    db
-      .collection('messages')
-      .where({
-        from_user_id: user.uid,
-        to_user_id: otherUserId,
-      })
-      .orderBy('createdAt', 'asc')
-      .get(),
-    db
-      .collection('messages')
-      .where({
-        from_user_id: otherUserId,
-        to_user_id: user.uid,
-      })
-      .orderBy('createdAt', 'asc')
-      .get(),
-  ])
-  
-  // 合并并排序
-  const allMessages = [
-    ...(sent.data || []),
-    ...(received.data || []),
-  ].sort((a, b) => {
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/messages/with?otherUserId=${encodeURIComponent(String(otherUserId || '').trim())}`,
+    method: 'GET',
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
   })
-  
-  // 标记为已读
-  const unreadIds = (received.data || [])
-    .filter((msg: any) => !msg.is_read)
-    .map((msg: any) => msg._id)
-  
-  if (unreadIds.length > 0) {
-    await Promise.all(
-      unreadIds.map((id: string) =>
-        db.collection('messages').doc(id).update({
-          is_read: true,
-        })
-      )
-    )
+
+  if (!resp || !resp.ok || !Array.isArray(resp.messages)) {
+    throw new Error((resp && resp.error) || 'GET_MESSAGES_FAILED')
   }
-  
-  return allMessages
+
+  return resp.messages as any[]
 }
 
 /**
@@ -178,19 +148,19 @@ export async function getMessagesWithUser(otherUserId: string): Promise<any[]> {
  */
 export async function getUnreadCount(): Promise<number> {
   try {
-    await requireNonGuest()
     const user = await getOrCreateUserProfile()
-    const db = app.database()
-    
-    const res = await db
-      .collection('messages')
-      .where({
-        to_user_id: user.uid,
-        is_read: false,
-      })
-      .count()
-    
-    return res.total || 0
+
+    const resp: any = await requestJson({
+      url: `${API_BASE}/messages/unread_count`,
+      method: 'GET',
+      header: {
+        'x-uid': String(user.uid || ''),
+        'x-nickname': String(user.nickname || ''),
+      },
+    })
+
+    if (!resp || !resp.ok) return 0
+    return Number(resp.count || 0)
   } catch (e) {
     console.error('获取未读消息数量失败:', e)
     return 0

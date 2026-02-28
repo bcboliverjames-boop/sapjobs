@@ -43,7 +43,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { app, requireNonGuest } from '../../utils/cloudbase'
+import { requireNonGuest } from '../../utils/cloudbase'
 import { sendMessage as sendMessageApi, getMessagesWithUser } from '../../utils/messages'
 
 const otherUserId = ref('')

@@ -1,4 +1,3 @@
-import { app, ensureLogin } from './cloudbase'
 import { ugcReplyAdd } from './ugc'
 
 export type CommentReply = {
@@ -12,21 +11,57 @@ export type CommentReply = {
 
 const COLLECTION = 'sap_comment_replies'
 
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        return forced ? String(forced) : 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
+
 export async function fetchRepliesByCommentId(commentId: string) {
   if (!commentId) return []
-  await ensureLogin()
-  const db = app.database()
   try {
-    // 先尝试不带 orderBy 查询，避免索引问题
-    const res = await db
-      .collection(COLLECTION)
-      .where({ comment_id: commentId })
-      .get()
-    
-    const data = res.data || []
+    const resp: any = await requestJson({
+      url: `${API_BASE}/comment_replies?commentId=${encodeURIComponent(String(commentId || '').trim())}`,
+      method: 'GET',
+    })
+
+    if (!resp || !resp.ok || !Array.isArray(resp.replies)) return []
+
+    const data = resp.replies || []
     console.log(`查询评论 ${commentId} 的回复，找到 ${data.length} 条:`, data)
-    
-    // 手动按时间排序
+
     return data.sort((a: any, b: any) => {
       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0

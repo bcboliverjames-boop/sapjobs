@@ -67,7 +67,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { auth } from '../utils/cloudbase'
 
 const popup = ref<any>(null)
 const captchaCode = ref('')
@@ -77,6 +76,16 @@ const state = ref('')
 const loading = ref(false)
 const show = ref(false) // 控制 v-if 的响应式变量
 const isRefreshing = ref(false)
+
+const goToPasswordLogin = () => {
+  try {
+    uni.navigateTo({ url: '/pages/login/password-login' })
+  } catch {
+    try {
+      uni.redirectTo({ url: '/pages/login/password-login' })
+    } catch {}
+  }
+}
 
 // 这个 watch 会在 show 变为 true 后启动，直到 popup.value 被赋值
 watch(popup, (newPopupInstance) => {
@@ -102,15 +111,10 @@ const handleRefresh = async () => {
   
   console.log('开始刷新验证码...')
   isRefreshing.value = true
-  
-  const { token, data } = await (auth as any).createCaptchaData({
-    state: state.value,
-  })
-  // console.log('验证码刷新:', 'data:', data, 'token:', token)
-  captchaData.value.token = token
-  captchaData.value.url = data
-  // console.log('验证码数据已更新:', captchaData.value)
-  isRefreshing.value = false 
+
+  uni.showToast({ title: '验证码功能已下线，请使用密码登录', icon: 'none' })
+  isRefreshing.value = false
+  goToPasswordLogin()
 }
 
 // 打开验证码弹窗
@@ -154,14 +158,12 @@ const handleSubmit = async () => {
   try {
     loading.value = true
     console.log('提交验证码:', captchaCode.value, 'token:', captchaData.value.token)
-    const result = await (auth as any).verifyCaptchaData({
-      key: captchaCode.value,
-      token: captchaData.value.token,
-      state: state.value
+    uni.$emit('RESOLVE_CAPTCHA_DATA', {
+      error: 'captcha_disabled',
+      error_description: '验证码功能已下线，请使用密码登录',
     })
-    console.log('验证码提交成功:', result)
-    uni.$emit('RESOLVE_CAPTCHA_DATA', result)
     closeCaptcha()
+    goToPasswordLogin()
   } catch (error) {
     console.error('验证码验证失败:', error)
     uni.showToast({ title: '验证失败，请重试', icon: 'none' })
@@ -183,13 +185,9 @@ const handleCancel = () => {
 // 事件处理函数
 const captchaDataHandler = (data: any) => {
   console.log('接收到 CAPTCHA_DATA_CHANGE 事件:', data)
-  if (data && data.url && data.token) {
-    isRefreshing.value = false; // 重置刷新状态
-    openCaptcha(data)
-  } else {
-    console.warn('接收到的验证码数据格式不正确:', data)
-    isRefreshing.value = false; // 重置刷新状态
-  }
+  isRefreshing.value = false
+  uni.showToast({ title: '验证码功能已下线，请使用密码登录', icon: 'none' })
+  goToPasswordLogin()
 }
 
 // 组件挂载

@@ -15,7 +15,7 @@
 
         <view class="hero-actions">
           <button class="btn btn-primary" @click="goToDemand">进入需求广场</button>
-          <button class="btn btn-ghost" :class="{ 'guest-disabled': isGuest }" @click="goToPublish">发布需求</button>
+          <button class="btn btn-ghost" :class="{ 'guest-disabled': isGuest }" :disabled="isGuest" @click="goToPublish">发布需求</button>
         </view>
 
         <view class="insights insights--hero">
@@ -65,7 +65,7 @@
                     <view class="module-bar-fill" :style="{ height: m.heightRpx + 'rpx' }" />
                     <text class="module-bar-count">{{ m.count }}</text>
                   </view>
-                  <text class="module-name">{{ m.module }}</text>
+                  <text class="module-name">{{ m.module === 'OTHER' ? '其他' : m.module }}</text>
                 </view>
               </view>
             </view>
@@ -133,7 +133,8 @@
                   v-for="item in todayNewList"
                   :key="item._id || String(item.local_id || '')"
                   class="list-item"
-                  @click="handleUniqueDemand(item)"
+                  @click="goToUniqueDemandDetail(item)"
+                  @longpress="copyUniqueDemand(item)"
                 >
                   <text class="list-item-title">{{ clipText(item.raw_text || '', 48) }}</text>
                   <text class="list-item-sub">{{ uniqueDemandMetaText(item) }}</text>
@@ -157,6 +158,8 @@
         <text class="footer-link" @click="goToContact">联系我们</text>
         <text class="footer-dot">·</text>
         <text class="footer-link" @click="goToReport">投诉举报</text>
+        <text class="footer-dot">·</text>
+        <text class="footer-link" @click="goToAccountDelete">注销与删除</text>
       </view>
       <text class="footer-icp" @click="openIcp">ICP备案号：{{ ICP_NUMBER }}</text>
     </view>
@@ -165,8 +168,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { ICP_LINK, ICP_NUMBER } from '../../config/site'
-import { app, ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
+import { ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
 import { fetchAllUniqueDemands, fetchAllUniqueDemandsByTimeRange, type SapUniqueDemandDoc } from '../../utils/sap-unique-demands'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
  
@@ -180,6 +184,15 @@ const goToDemand = () => {
 
 const isGuest = ref(false)
 
+const refreshGuestState = async () => {
+  try {
+    const state: any = await ensureLogin()
+    isGuest.value = !!(state && isGuestUser(state.user))
+  } catch {
+    isGuest.value = false
+  }
+}
+
 const goToDemandWithQuery = (q: {
   timeRange?: 'ALL' | 'TODAY' | 'WEEK'
   timeField?: 'CREATED' | 'UPDATED'
@@ -188,7 +201,11 @@ const goToDemandWithQuery = (q: {
   const params: string[] = []
   if (q.timeRange) params.push(`timeRange=${encodeURIComponent(q.timeRange)}`)
   if (q.timeField) params.push(`timeField=${encodeURIComponent(q.timeField)}`)
-  if (q.module) params.push(`module=${encodeURIComponent(String(q.module || '').trim())}`)
+  if (q.module) {
+    const m = String(q.module || '').trim()
+    const mapped = m === '其他' ? 'OTHER' : m
+    params.push(`module=${encodeURIComponent(mapped)}`)
+  }
   const suffix = params.length ? `?${params.join('&')}` : ''
   uni.navigateTo({
     url: `/pages/demand/demand${suffix}`,
@@ -281,6 +298,12 @@ const goToContact = () => {
 const goToReport = () => {
   uni.navigateTo({
     url: '/pages/legal/report'
+  })
+}
+
+const goToAccountDelete = () => {
+  uni.navigateTo({
+    url: '/pages/legal/account-delete'
   })
 }
 
@@ -412,6 +435,7 @@ const SAP_MODULES = [
   'GTS',
   'DRC',
   'JAVA',
+  'OTHER',
 ]
 const SAP_MODULE_SET = new Set(SAP_MODULES.map((x) => x.toUpperCase()))
 
@@ -490,7 +514,7 @@ const extractModules = (d: SapUniqueDemandDoc): string[] => {
       if (SAP_MODULE_SET.has(up) && !hit.includes(k)) hit.push(k)
     })
   }
-  return hit.length ? hit : ['其他']
+  return hit.length ? hit : ['OTHER']
 }
 
 const extractCity = (d: SapUniqueDemandDoc): string => {
@@ -537,7 +561,7 @@ const ALL_MODULES = Array.from(
       .filter(Boolean)
       .filter((x) => String(x).trim() !== '其他')
   )
-).concat(['其他'])
+).concat(['OTHER'])
 
 const buildModuleBars = (docs: SapUniqueDemandDoc[]) => {
   const counts = new Map<string, number>()
@@ -611,22 +635,10 @@ const loadUniqueInsights = async () => {
   try {
     const state: any = await ensureLogin()
     const user = state && state.user
-    const skipCloudDb = !!(state && (state as any).isLocalAuth) || !!(user && (user as any)._isLocalAuth) || !!isGuestUser(user)
+    const skipCloudDb = !!isGuestUser(user)
     if (skipCloudDb) {
       insightsMode.value = 'demo'
       return
-    }
-
-    try {
-      const db = app.database()
-      const visible = await db.collection('sap_unique_demands').count()
-      const total = Number((visible as any)?.total || 0)
-      console.log('[unique-insights] readable sap_unique_demands count:', total)
-      if (!total) {
-        uni.showToast({ title: '需求唯一表暂无可读数据，请检查云端集合权限', icon: 'none' })
-      }
-    } catch (e: any) {
-      console.error('[unique-insights] failed to count sap_unique_demands:', e)
     }
 
     insightsMode.value = 'strict'
@@ -858,8 +870,14 @@ const loadUniqueInsights = async () => {
   }
 }
 
-const handleUniqueDemand = (item: SapUniqueDemandDoc) => {
-  const raw = String(item.raw_text || '').trim()
+const goToUniqueDemandDetail = (item: SapUniqueDemandDoc) => {
+  const uniqueId = String((item as any)?._id || '').trim()
+  if (!uniqueId) return
+  uni.navigateTo({ url: `/pages/demand/detail?uniqueId=${encodeURIComponent(uniqueId)}` })
+}
+
+const copyUniqueDemand = (item: SapUniqueDemandDoc) => {
+  const raw = String((item as any)?.raw_text || '').trim()
   if (!raw) return
   uni.setClipboardData({
     data: raw,
@@ -873,12 +891,27 @@ onMounted(() => {
   loadUniqueInsights()
 })
 
-onMounted(async () => {
+onMounted(() => {
+  refreshGuestState()
+})
+
+onShow(() => {
+  refreshGuestState()
+
   try {
-    const state: any = await ensureLogin()
-    isGuest.value = !!(state && isGuestUser(state.user))
+    const need = String(uni.getStorageSync('sapboss_need_refresh_home') || '').trim()
+    if (need) {
+      try {
+        ;(uni as any).removeStorageSync('sapboss_need_refresh_home')
+      } catch {
+        try {
+          uni.setStorageSync('sapboss_need_refresh_home', '')
+        } catch {}
+      }
+      loadUniqueInsights()
+    }
   } catch {
-    isGuest.value = false
+    // ignore
   }
 })
 </script>

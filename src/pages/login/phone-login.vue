@@ -61,7 +61,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted } from 'vue'
-import { getPhoneVerification, signInWithPhoneCode, ensureLogin } from '../../utils/cloudbase'
 
 const isH5Runtime = () => {
   try {
@@ -107,7 +106,7 @@ const isPhoneValid = computed(() => {
 })
 
 const canLogin = computed(() => {
-  return isPhoneValid.value && verificationCode.value.length === 6 && verificationInfo.value
+  return isPhoneValid.value
 })
 
 const goToPasswordLoginWithIdentifier = (identifier: string) => {
@@ -123,46 +122,13 @@ const goToPasswordLoginWithIdentifier = (identifier: string) => {
 
 // 获取验证码
 const getVerificationCode = async () => {
-  if (isH5) {
-    if (isPhoneValid.value) {
-      goToPasswordLoginWithIdentifier(phoneNumber.value)
-      return
-    }
-    uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
+  if (isPhoneValid.value) {
+    uni.showToast({ title: '验证码登录已下线，请使用密码登录', icon: 'none' })
+    goToPasswordLoginWithIdentifier(phoneNumber.value)
     return
   }
-  if (!isPhoneValid.value) {
-    uni.showToast({
-      title: '请输入正确的手机号',
-      icon: 'none'
-    })
-    return
-  }
-  
-  try {
-    loading.value = true
-    loadingText.value = '发送验证码中...'
-    
-    const result = await getPhoneVerification(phoneNumber.value)
-    verificationInfo.value = result
-    
-    uni.showToast({
-      title: '验证码发送成功',
-      icon: 'success'
-    })
-    
-    // 开始倒计时
-    startCountdown()
-    
-  } catch (error: any) {
-    console.error('获取验证码失败:', error)
-    uni.showToast({
-      title: error.message || '获取验证码失败',
-      icon: 'none'
-    })
-  } finally {
-    loading.value = false
-  }
+  uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
+  return
 }
 
 // 开始倒计时
@@ -179,48 +145,12 @@ const startCountdown = () => {
 
 // 手机验证码登录
 const handleLogin = async () => {
-  if (isH5) {
-    if (!isPhoneValid.value) {
-      uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
-      return
-    }
-    goToPasswordLoginWithIdentifier(phoneNumber.value)
+  if (!isPhoneValid.value) {
+    uni.showToast({ title: '请输入正确的手机号', icon: 'none' })
     return
   }
-  if (!canLogin.value) {
-    uni.showToast({
-      title: '请完善登录信息',
-      icon: 'none'
-    })
-    return
-  }
-  
-  try {
-    loading.value = true
-    loadingText.value = '登录中...'
-    await signInWithPhoneCode({
-      verificationInfo: verificationInfo.value,
-      verificationCode: verificationCode.value,
-      phoneNum: phoneNumber.value
-    })
-    
-    uni.showToast({
-      title: '登录成功',
-      icon: 'success'
-    })
-    
-    setTimeout(() => {
-      goBackOrHome()
-    }, 1000)   
-  } catch (error: any) {
-    console.error('登录失败:', error)
-    uni.showToast({
-      title: error.message || '登录失败',
-      icon: 'none'
-    })
-  } finally {
-    loading.value = false
-  }
+  uni.showToast({ title: '验证码登录已下线，请使用密码登录', icon: 'none' })
+  goToPasswordLoginWithIdentifier(phoneNumber.value)
 }
 
 // 返回登录方式选择

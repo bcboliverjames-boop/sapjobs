@@ -1,7 +1,27 @@
 import { requireNonGuest } from './cloudbase'
 import { getOrCreateUserProfile } from './user'
 
-const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        return forced ? String(forced) : 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
 
 const API_TOKEN_KEY = 'sapboss_api_token'
 

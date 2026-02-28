@@ -1,22 +1,12 @@
-import cloudbase from '@cloudbase/js-sdk'
-import adapter from '@cloudbase/adapter-uni-app'
+export const isValidEnvId = true
 
-// 使用 UniApp 适配器
-cloudbase.useAdapters(adapter,{uni: uni});
-
-// 云开发环境ID，已自动填入当前环境，如需切换可改为使用环境变量 VITE_ENV_ID
-const ENV_ID: string = import.meta.env.VITE_ENV_ID || 'cloud1-2g93n7qgab878d25';
-
-// 检查环境ID是否已配置
-export const isValidEnvId = ENV_ID && ENV_ID !== 'your-env-id';
-
-let lastAnonymousSignInFailedAt = 0
-let lastAnonymousSignInError: any = null
-const ANON_SIGNIN_COOLDOWN_MS = 30_000
+export const app: any = null
+export const auth: any = null
 
 const GUEST_UID_KEY = 'sapboss_guest_uid'
 
 const API_TOKEN_KEY = 'sapboss_api_token'
+const API_UID_KEY = 'sapboss_api_uid'
 
 const LAST_LOGIN_IDENTIFIER_KEY = 'sapboss_last_login_identifier'
 const LAST_LOGIN_IDENTIFIER_TYPE_KEY = 'sapboss_last_login_identifier_type'
@@ -26,6 +16,52 @@ function isH5Runtime() {
     return typeof window !== 'undefined'
   } catch {
     return false
+  }
+}
+
+function safeReadStorage(key: string): string {
+  try {
+    return String(uni.getStorageSync(key) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function safeWriteStorage(key: string, val: string) {
+  try {
+    uni.setStorageSync(key, String(val || ''))
+  } catch {}
+}
+
+function decodeBase64Json(b64url: string): any {
+  const b64 = String(b64url || '').replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+
+  if (typeof atob === 'function') {
+    return JSON.parse(atob(padded))
+  }
+
+  try {
+    const B: any = (globalThis as any).Buffer
+    if (B && typeof B.from === 'function') {
+      return JSON.parse(B.from(padded, 'base64').toString('utf8'))
+    }
+  } catch {}
+
+  return null
+}
+
+function getUidFromJwt(token: string): string {
+  const t = String(token || '').trim()
+  if (!t) return ''
+  try {
+    const parts = t.split('.')
+    if (parts.length < 2) return ''
+    const payload = decodeBase64Json(parts[1])
+    if (!payload) return ''
+    return String((payload as any).uid || (payload as any).sub || '').trim()
+  } catch {
+    return ''
   }
 }
 
@@ -146,47 +182,17 @@ export async function requireNonGuest() {
  * @returns {Object} 云开发实例
  */
 export const init = (config: any = {}) => {
-  const appConfig: any = {
-    env: config.env || ENV_ID,
-    timeout: config.timeout || 15000,
-  };
-
-  const appSign = (import.meta as any)?.env?.VITE_TCB_APP_SIGN;
-  const appAccessKeyIdRaw = (import.meta as any)?.env?.VITE_TCB_APP_ACCESS_KEY_ID;
-  const appAccessKey = (import.meta as any)?.env?.VITE_TCB_APP_ACCESS_KEY;
-  const appAccessKeyId = Number(appAccessKeyIdRaw);
-  if (appSign && appAccessKey && Number.isFinite(appAccessKeyId) && appAccessKeyId > 0) {
-    appConfig.appSign = appSign;
-    appConfig.appSecret = {
-      appAccessKeyId,
-      appAccessKey,
-    };
-  }
-
-  return cloudbase.init(appConfig);
+  return {
+    config,
+    disabled: true,
+  } as any
 };
-
-/**
- * 默认的云开发实例
- */
-export const app = init();
-
-
-/**
- * 云开发认证实例
- */
-export const auth = app.auth();
 
 /**
  * 检查环境配置是否有效
  */
 export const checkEnvironment = () => {
-  if (!isValidEnvId) {
-    const message = '❌ 云开发环境ID未配置\n\n请按以下步骤配置：\n1. 打开 src/utils/cloudbase.ts 文件\n2. 将 ENV_ID 变量的值替换为您的云开发环境ID\n3. 保存文件并重新运行\n\n获取环境ID：https://console.cloud.tencent.com/tcb';
-    console.error(message);
-    return false;
-  }
-  return true;
+  return true
 };
 
 
@@ -195,247 +201,8 @@ export const checkEnvironment = () => {
  * @returns {Promise} 登录状态
  */
 export const login = async () => {
-  // const auth = app.auth();
-  try {
-    if (isH5Runtime()) {
-      return
-    }
-    // 默认采用匿名登录
-    await auth.signInAnonymously();
-    // 也可以换成跳转SDK 内置的登录页面，支持账号密码登录/手机号登录/微信登录,目前只支持 web 端，小程序等其他平台请自行实现登录逻辑
-    // await auth.toDefaultLoginPage()
-  } catch (error) {
-    lastAnonymousSignInFailedAt = Date.now()
-    lastAnonymousSignInError = error
-    console.error('登录失败:', error);
-    throw error;
-  }
-};
-
-/**
- * 微信小程序手机号一键登录
- * @param phoneCode - 从 getPhoneNumber 事件中获取的动态令牌
- */
-export const signInWithPhoneAuth = async (phoneCode: string) => {
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-  const loginState = await (auth as any).signInWithPhoneAuth({
-    phoneCode: phoneCode
-  });
-  return loginState;
-};
-
-/**
- * 【新增】微信小程序 OpenID 静默登录
- */
-export const signInWithOpenId = async () => {
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-  // 直接调用 auth 模块的同名方法
-  const loginState = await (auth as any).signInWithOpenId();
-  return loginState;
-};
-
-/**
- * 获取手机验证码
- * @param {string} phoneNumber - 手机号码
- * @returns {Promise} 验证信息
- */
-export const getPhoneVerification = async (phoneNumber: string) => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-  // const auth = app.auth();
-
-  try {
-    // 格式化手机号为国际格式
-    let formattedPhone = phoneNumber;
-    
-    // 如果是中国大陆手机号（11位数字），添加 +86 前缀
-    if (/^1[3-9]\d{9}$/.test(phoneNumber)) {
-      formattedPhone = `+86 ${phoneNumber}`;
-    }
-    // 如果已经是国际格式，直接使用
-    else if (/^\+\d{1,3}\s\d{4,20}$/.test(phoneNumber)) {
-      formattedPhone = phoneNumber;
-    }
-    else {
-      throw new Error('手机号格式不正确');
-    }
-    // console.log('格式化后的手机号:', formattedPhone);
-    const verificationInfo = await auth.getVerification({
-      phone_number: formattedPhone,
-    });
-    console.log('验证码发送成功');
-    return verificationInfo;
-  } catch (error) {
-    console.error('获取验证码失败:', error);
-    throw error;
-  }
-};
-
-/**
- * 使用手机验证码登录
- * @param {Object} params - 登录参数
- * @param {any} params.verificationInfo - 验证信息对象
- * @param {string} params.verificationCode - 验证码
- * @param {string} params.phoneNum - 手机号码
- * @returns {Promise} 登录状态
- */
-export const signInWithPhoneCode = async (params: {
-  verificationInfo: any;
-  verificationCode: string;
-  phoneNum: string;
-}) => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-
-  // const auth = app.auth();
-  const { verificationInfo, verificationCode, phoneNum } = params;
-
-  try {
-    await (auth as any).signInWithSms({
-      verificationInfo,
-      verificationCode,
-      phoneNum,
-    });
-    
-    const loginState = await auth.getLoginState();
-    console.log('手机验证码登录成功');
-    return loginState;
-  } catch (error) {
-    console.error('手机验证码登录失败:', error);
-    throw error;
-  }
-};
-
-/**
- * 密码登录
- * @param {string} username - 手机号码（格式：+86 13800000000）/邮箱/用户名
- * @param {string} password - 密码
- * @returns {Promise} 登录状态
- */
-export const signInWithPassword = async (username: string, password: string) => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-  // const auth = app.auth();
-
-  try {
-    let formattedUsername = username;
-    let loginType = '';
-
-    // 判断输入类型并格式化
-    if (/^1[3-9]\d{9}$/.test(username)) {
-      // 中国大陆手机号（11位数字）
-      formattedUsername = `+86 ${username}`;
-      loginType = '手机号';
-    } 
-    else if (/^\+\d{1,3}\s\d{4,20}$/.test(username)) {
-      // 已经是国际格式的手机号
-      formattedUsername = username;
-      loginType = '手机号';
-    }
-    else if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(username)) {
-      // 邮箱格式
-      formattedUsername = username;
-      loginType = '邮箱';
-    }
-    else if (/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-      // 用户名格式（3-20位字母、数字、下划线）
-      formattedUsername = username;
-      loginType = '用户名';
-    }
-    else {
-      // 格式不符合任何规则，但仍然尝试登录（可能是其他格式的用户名）
-      formattedUsername = username;
-      loginType = '用户名';
-    }
-
-    await auth.signIn({
-      username: formattedUsername,
-      password: password,
-    });
-
-    const loginState = await auth.getLoginState();
-    console.log(`${loginType}密码登录成功`);
-    return loginState;
-  } catch (error) {
-    throw error;
-  }
-};
-
-
-/**
- * 获取邮箱验证码
- * @param {string} email - 邮箱地址
- * @returns {Promise} 验证信息
- */
-export const getEmailVerification = async (email: string) => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-  // const auth = app.auth();
-
-  try {
-    const verificationInfo = await auth.getVerification({
-      email: email,
-    });
-    console.log('邮箱验证码发送成功');
-    return verificationInfo;
-  } catch (error) {
-    console.error('获取邮箱验证码失败:', error);
-    throw error;
-  }
-};
-
-/**
- * 使用邮箱验证码登录
- * @param {Object} params - 登录参数
- * @param {any} params.verificationInfo - 验证信息对象
- * @param {string} params.verificationCode - 验证码
- * @param {string} params.email - 邮箱地址
- * @returns {Promise} 登录状态
- */
-export const signInWithEmailCode = async (params: {
-  verificationInfo: any;
-  verificationCode: string;
-  email: string;
-}) => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
-  }
-
-  // const auth = app.auth();
-  const { verificationInfo, verificationCode, email } = params;
-
-  try {
-    await (auth as any).signInWithEmail({
-      verificationInfo,
-      verificationCode,
-      email,
-    });
-    
-    // const loginState = await auth.getLoginState();
-    console.log('邮箱验证码登录成功');
-    // return loginState;
-  } catch (error) {
-    console.error('邮箱验证码登录失败:', error);
-    throw error;
-  }
+  // CloudBase 登录已禁用，统一采用“游客态 + 密码登录获取 JWT”。
+  return
 };
 
 /**
@@ -443,118 +210,28 @@ export const signInWithEmailCode = async (params: {
  * @returns {Promise} 登录状态
  */
 export const ensureLogin = async () => {
-  // 检查环境配置
-  if (!checkEnvironment()) {
-    throw new Error('环境ID未配置');
+  const storedJwt = safeReadStorage(API_TOKEN_KEY)
+  let uid = safeReadStorage(API_UID_KEY)
+
+  if (storedJwt && !uid) {
+    uid = getUidFromJwt(storedJwt)
+    if (uid) safeWriteStorage(API_UID_KEY, uid)
   }
 
-  if (isH5Runtime()) {
-    const storedJwt = (() => {
-      try {
-        return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
-      } catch {
-        return ''
-      }
-    })()
-
-    if (storedJwt) {
-      // 客户端无法校验 JWT 签名，这里仅用于 UI/权限判断；服务端会在接口处校验。
-      const uid = (() => {
-        try {
-          const parts = storedJwt.split('.')
-          if (parts.length < 2) return ''
-          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-          const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
-          const json = JSON.parse(atob(padded))
-          return String(json.uid || json.sub || '').trim()
-        } catch {
-          return ''
-        }
-      })()
-
-      if (uid) {
-        return {
-          user: {
-            uid,
-            nickName: '',
-            nickname: '',
-            _isGuest: false,
-            _isLocalAuth: true,
-          },
-          isLocalAuth: true,
-        } as any
-      }
-    }
-
-    return { user: getOrCreateGuestUser(), isAnonymousAuth: true } as any
+  if (storedJwt && uid) {
+    return {
+      user: {
+        uid,
+        nickName: '',
+        nickname: '',
+        _isGuest: false,
+        _isLocalAuth: true,
+      },
+      isLocalAuth: true,
+    } as any
   }
 
-  // const auth = app.auth();
-
-  try {
-    // 检查当前登录状态
-    let loginState = await auth.getLoginState().catch(() => null as any);
-
-    if (loginState && loginState.user) {
-      try {
-        const isAnon =
-          !!((loginState as any).isAnonymousAuth || (loginState as any).isAnonymousAuth) ||
-          String(((loginState as any).user && ((loginState as any).user as any).loginType) || '')
-            .toUpperCase()
-            .includes('ANON')
-        if (isAnon && (loginState as any).user) {
-          ;((loginState as any).user as any)._isGuest = true
-          const nn = String((((loginState as any).user as any).nickName || ((loginState as any).user as any).nickname) || '').trim()
-          if (!nn) {
-            ;((loginState as any).user as any).nickName = '游客'
-            ;((loginState as any).user as any).nickname = '游客'
-          }
-        }
-      } catch {}
-
-      // 已登录，返回当前状态
-      console.log('用户已登录');
-      return loginState;
-    }
-
-    // 未登录，执行匿名登录
-    console.log('用户未登录，执行登录...');
-
-    const now = Date.now()
-    if (lastAnonymousSignInFailedAt && now - lastAnonymousSignInFailedAt < ANON_SIGNIN_COOLDOWN_MS) {
-      throw lastAnonymousSignInError || new Error('ANON_SIGNIN_FAILED')
-    }
-
-    await login();
-    loginState = await auth.getLoginState();
-    if (loginState && loginState.user) {
-      try {
-        const isAnon =
-          !!((loginState as any).isAnonymousAuth || (loginState as any).isAnonymousAuth) ||
-          String(((loginState as any).user && ((loginState as any).user as any).loginType) || '')
-            .toUpperCase()
-            .includes('ANON')
-        if (isAnon && (loginState as any).user) {
-          ;((loginState as any).user as any)._isGuest = true
-          const nn = String((((loginState as any).user as any).nickName || ((loginState as any).user as any).nickname) || '').trim()
-          if (!nn) {
-            ;((loginState as any).user as any).nickName = '游客'
-            ;((loginState as any).user as any).nickname = '游客'
-          }
-        }
-      } catch {}
-
-      return loginState;
-    }
-
-    throw new Error('LOGIN_FAILED');
-  } catch (error) {
-    if (isH5Runtime()) {
-      return { user: getOrCreateGuestUser() } as any
-    }
-    console.error('登录失败:', error);
-    throw error;
-  }
+  return { user: getOrCreateGuestUser(), isAnonymousAuth: true } as any
 };
 
 /**
@@ -563,11 +240,9 @@ export const ensureLogin = async () => {
  */
 export async function initCloudBase() {
   try {
-    await ensureLogin();
-    console.log('云开发初始化成功');
+    await ensureLogin()
     return true;
   } catch (error) {
-    console.error('云开发初始化失败:', error);
     return false;
   }
 }
@@ -577,38 +252,24 @@ export async function initCloudBase() {
  * @returns {Promise}
  */
 export const logout = async () => {
-  // const auth = app.auth();
-
   try {
     try {
       ;(uni as any).removeStorageSync(API_TOKEN_KEY)
+      ;(uni as any).removeStorageSync(API_UID_KEY)
       ;(uni as any).removeStorageSync(LAST_LOGIN_IDENTIFIER_KEY)
       ;(uni as any).removeStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY)
       ;(uni as any).removeStorageSync(GUEST_UID_KEY)
     } catch {
       try {
         uni.setStorageSync(API_TOKEN_KEY, '')
+        uni.setStorageSync(API_UID_KEY, '')
         uni.setStorageSync(LAST_LOGIN_IDENTIFIER_KEY, '')
         uni.setStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY, '')
         uni.setStorageSync(GUEST_UID_KEY, '')
       } catch {}
     }
 
-    if (isH5Runtime()) {
-      return { success: true, message: '已成功退出登录' }
-    }
-
-    try {
-      await auth.signOut()
-    } catch (e: any) {
-      const code = String((e && (e.code || e.error)) || '').toLowerCase()
-      const msg = String((e && (e.message || e.error_description)) || '').toLowerCase()
-      const isCredMissing =
-        code.includes('unauth') || msg.includes('credentials not found') || msg.includes('unauth')
-      if (!isCredMissing) throw e
-    }
-
-    return { success: true, message: '已成功退出登录' };
+    return { success: true, message: '已成功退出登录' }
   } catch (error) {
     console.error('退出登录失败:', error);
     throw error;
@@ -619,17 +280,13 @@ export const logout = async () => {
 export default {
   init,
   app,
+  auth,
   ensureLogin,
+  requireNonGuest,
+  isGuestUser,
   login,
   logout,
   checkEnvironment,
   isValidEnvId,
   initCloudBase,
-  getPhoneVerification,
-  signInWithPhoneCode,
-  getEmailVerification,
-  signInWithEmailCode,
-  signInWithPassword,
-  signInWithPhoneAuth,
-  signInWithOpenId
 };

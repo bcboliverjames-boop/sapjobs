@@ -44,7 +44,7 @@
 
       <view class="section">
         <text class="h2">6. 联系方式</text>
-        <text class="p">如需咨询、删除、更正或投诉举报，请前往“联系我们/投诉举报”页面。</text>
+        <text class="p">如需咨询、删除、更正、注销账号或投诉举报，请前往“联系我们/投诉举报/注销与删除申请”页面。</text>
       </view>
     </view>
   </view>

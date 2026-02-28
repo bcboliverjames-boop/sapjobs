@@ -3,9 +3,6 @@
     <view class="header">
       <text class="badge">SAP 需求详情</text>
       <text class="title">原始需求内容</text>
-      <text class="subtitle">
-        下方展示从微信群 / QQ 群整理的完整原文和已识别的关键信息。
-      </text>
     </view>
 
     <scroll-view class="content" scroll-y="true">
@@ -54,6 +51,16 @@
             </view>
             <view v-if="demand.daily_rate" class="tag tag--rate">
               <text>💰 {{ formatDailyRate(demand.daily_rate) }}</text>
+            </view>
+            <view v-if="(demand as any).cooperation_mode" class="tag tag--ghost">
+              <text>{{ (demand as any).cooperation_mode }}</text>
+            </view>
+            <view
+              v-for="t in (demand as any).extra_tags"
+              :key="t"
+              class="tag tag--ghost"
+            >
+              <text>{{ t }}</text>
             </view>
           </view>
         </view>
@@ -138,7 +145,7 @@
               <text class="similar-demand-text">{{ item.raw_text }}</text>
               <text v-if="item.createdAt" class="similar-demand-time">{{ formatTime(item.createdAt) }}</text>
 
-              <view v-if="canViewContact" class="related-contact" @tap.stop>
+              <view v-if="canViewContact || isSelfProvider(item)" class="related-contact" @tap.stop>
                 <view v-if="!getRelatedProviderProfile(item)" class="provider-meta">
                   发布者未注册或档案未同步，暂无法展示联系方式
                 </view>
@@ -150,9 +157,9 @@
                     发布者暂未提供联系方式
                   </view>
                   <view v-else>
-                    <view v-if="!isContactUnlocked(item)" class="unlock-row" @tap.stop>
+                    <view v-if="!isSelfProvider(item) && !isContactUnlocked(item)" class="unlock-row" @tap.stop>
                       <button class="unlock-btn" :class="{ 'guest-disabled': isGuest }" @tap.stop="unlockRelatedContact(item)">点击解锁联系方式</button>
-                      <text class="unlock-hint">解锁后可复制微信/QQ（仅用于项目沟通，请勿骚扰）</text>
+                      <text class="unlock-hint">解锁后可查看联系信息（仅用于项目沟通，请勿骚扰）</text>
                     </view>
                     <view v-else class="related-contact-inner">
                       <view v-if="getRelatedProviderProfile(item)?.wechat_id" class="contact-item" @tap.stop="copyContact('wechat', String(getRelatedProviderProfile(item)?.wechat_id))">
@@ -200,7 +207,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import {
   fetchSapDemandById,
   SAMPLE_DEMANDS,
@@ -215,6 +222,7 @@ import { addFavorite, removeFavorite, isFavorite } from '../../utils/favorites'
 import { navigateTo } from '../../utils'
 import { calculateTextSimilarity, checkSimilarDemandsByPolicy } from '../../utils/demand-similarity'
 import { unlockContact } from '../../utils/ugc'
+import { sapModuleCodeToLabel, normalizeSapModuleToken } from '../../utils/sap-modules'
 import {
   markDemandStatus,
   unmarkDemandStatus,
@@ -231,9 +239,48 @@ const loading = ref(true)
 const demand = ref<SapDemandRecord | null>(null)
 const isGuest = ref(false)
 const demandId = ref<string>('')
+const uniqueDemandId = ref<string>('')
 const viewerProfile = ref<UserProfile | null>(null)
 const currentRawId = ref<string>('')
 const relatedProfilesById = ref<Record<string, UserProfile>>({})
+
+const refreshAuthState = async () => {
+  try {
+    const prevGuest = !!isGuest.value
+    const state: any = await ensureLogin()
+    const nextGuest = !!(state && isGuestUser(state.user))
+    isGuest.value = nextGuest
+
+    // When switching from guest -> logged-in, reload auth-bound states.
+    if (prevGuest && !nextGuest) {
+      try {
+        viewerProfile.value = await getUserProfileOnly()
+      } catch {
+        viewerProfile.value = null
+      }
+      try {
+        loadUnlockState()
+      } catch {}
+      try {
+        await loadStatusData()
+      } catch {}
+      try {
+        await loadReliabilityData()
+      } catch {}
+      try {
+        if (demandId.value) {
+          isFavorited.value = await resolveFavoriteState([uniqueDemandId.value, demandId.value, currentRawId.value])
+        }
+      } catch {}
+    }
+  } catch {
+    isGuest.value = false
+  }
+}
+
+onShow(async () => {
+  await refreshAuthState()
+})
 
 const statusOptions = [
   { value: 'applied', label: '已投递', icon: '📤', confirmMessage: '是否确认已投递？' },
@@ -272,30 +319,154 @@ const safeDecodeURIComponent = (value: string) => {
   }
 }
 
+const parseJsonObj = (v: any): any => {
+  if (!v) return null
+  if (typeof v === 'object') return v
+  try {
+    const s = String(v || '').trim()
+    if (!s) return null
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}
+
+const safeJsonArray = (v: any): string[] => {
+  if (!v) return []
+  try {
+    const obj = typeof v === 'string' ? JSON.parse(v) : v
+    if (Array.isArray(obj)) return obj.map((x) => String(x)).filter(Boolean)
+    return []
+  } catch {
+    return []
+  }
+}
+
+const lookupUniqueIdByRawId = async (rawId: string): Promise<string> => {
+  const rid = String(rawId || '').trim()
+  if (!rid) return ''
+  try {
+    const base = (() => {
+      try {
+        if (typeof window !== 'undefined') {
+          const host = String(window.location && window.location.hostname)
+          if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+            const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+            return forced ? String(forced) : 'http://127.0.0.1:3001'
+          }
+        }
+      } catch {}
+      const fromEnv =
+        (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+      if (fromEnv) return String(fromEnv)
+      return 'https://api.sapboss.com'
+    })()
+
+    const resp: any = await new Promise((resolve, reject) => {
+      uni.request({
+        url: `${String(base).replace(/\/+$/, '')}/unique_demands/by_raw/${encodeURIComponent(rid)}`,
+        method: 'GET',
+        header: { 'Content-Type': 'application/json' },
+        success: (res) => resolve((res as any)?.data),
+        fail: (err) => reject(err),
+      })
+    })
+
+    if (resp && resp.ok && resp.uniqueId) return String(resp.uniqueId || '').trim()
+    return ''
+  } catch {
+    return ''
+  }
+}
+
+const toModuleLabel = (code: string): string => {
+  const c = String(code || '').trim().toUpperCase()
+  if (!c) return ''
+  if (c === 'OTHER') return '其他'
+  return sapModuleCodeToLabel(c)
+}
+
+const extractCityFromUnique = (doc: SapUniqueDemandDoc, rawText: string): string => {
+  const attrs = parseJsonObj((doc as any)?.attributes_json)
+  const cityFromAttrs = attrs ? String(attrs.city || '').trim() : ''
+
+  const tags = safeJsonArray((doc as any)?.tags_json)
+  const cityFromTags = tags.find((t) => ['远程', '海外', '欧洲', '菲律宾'].includes(String(t || '').trim()))
+  const base = cityFromAttrs || (cityFromTags ? String(cityFromTags) : '')
+
+  const raw = String(rawText || '')
+  const cityFromRaw = /菲律宾|philippines/i.test(raw)
+    ? '菲律宾'
+    : /欧洲|europe/i.test(raw)
+      ? '欧洲'
+      : /海外|overseas|国外/i.test(raw)
+        ? '海外'
+        : ''
+
+  if (base === '海外' && (cityFromRaw === '欧洲' || cityFromRaw === '菲律宾')) return cityFromRaw
+  return base || cityFromRaw || ''
+}
+
 const mapUniqueToDemand = (doc: SapUniqueDemandDoc): SapDemandRecord => {
   const rawText = String(doc?.raw_text || '').trim()
+  const attrs = parseJsonObj((doc as any)?.attributes_json) || null
   const parsed = parseDemandText(rawText)
-  const moduleCodes = (parsed.module_codes || []).map((x) => String(x || '').trim().toUpperCase()).filter(Boolean)
-  const moduleLabels = moduleCodes.map((c) => {
-    if (c === 'FICO') return 'FI/CO'
-    if (c === 'OTHER') return '其他'
-    return c
-  })
+
+  const moduleCodes = (() => {
+    const fromAttrs = attrs && Array.isArray(attrs.module_codes) ? attrs.module_codes : null
+    const base = fromAttrs || parsed.module_codes || []
+    return (base || [])
+      .map((x: any) => String(x || '').trim())
+      .map((x: string) => normalizeSapModuleToken(x) || String(x || '').trim().toUpperCase())
+      .filter(Boolean)
+  })()
+  const moduleLabels = moduleCodes.map(toModuleLabel).filter(Boolean)
+
+  const durationText = attrs ? String(attrs.duration_text || '').trim() : ''
+  const yearsText = attrs ? String(attrs.years_text || '').trim() : ''
+  const languageTag = attrs ? String(attrs.language_tag || '').trim() : ''
+  const dailyRateText = attrs ? String(attrs.daily_rate_text || '').trim() : ''
+  const cooperationModeText = attrs ? String(attrs.cooperation_mode || '').trim() : ''
+
+  const tagsFromDoc = safeJsonArray((doc as any)?.tags_json)
+  const extraTags = (() => {
+    const base = tagsFromDoc.map((x) => String(x || '').trim()).filter(Boolean)
+    const drop = new Set<string>()
+    moduleLabels.forEach((x) => drop.add(String(x || '').trim()))
+    const cityFromAttrs = attrs ? String(attrs.city || '').trim() : ''
+    if (cityFromAttrs) drop.add(cityFromAttrs)
+    if (durationText) drop.add(durationText)
+    if (yearsText) drop.add(yearsText)
+    if (languageTag) drop.add(languageTag)
+    if (dailyRateText) drop.add(dailyRateText)
+    if (cooperationModeText) drop.add(cooperationModeText)
+    const out: string[] = []
+    for (const t of base) {
+      if (!t) continue
+      if (drop.has(t)) continue
+      if (out.includes(t)) continue
+      out.push(t)
+      if (out.length >= 10) break
+    }
+    return out
+  })()
 
   return {
     id: (doc as any)?._id,
     raw_text: rawText,
     module_labels: moduleLabels,
     module_codes: moduleCodes,
-    city: parsed.city || '',
-    duration_text: parsed.duration_text || '',
-    years_text: parsed.years_text || '',
-    language: parsed.language || '',
-    daily_rate: parsed.daily_rate || '',
-    provider_name: (doc as any)?.publisher_name || '未知',
-    provider_user_id: (doc as any)?.provider_id || undefined,
+    city: extractCityFromUnique(doc, rawText) || (attrs ? String(attrs.city || '').trim() : '') || parsed.city || '',
+    duration_text: durationText || parsed.duration_text || '',
+    years_text: yearsText || parsed.years_text || '',
+    language: languageTag || parsed.language || '',
+    daily_rate: dailyRateText || parsed.daily_rate || '',
+    cooperation_mode: cooperationModeText,
+    provider_name: (doc as any)?.provider_name || (doc as any)?.publisher_name || '未知',
+    provider_user_id: (doc as any)?.provider_user_id || (doc as any)?.provider_id || undefined,
     createdAt: (doc as any)?.created_time || (doc as any)?.message_time,
     updatedAt: (doc as any)?.last_updated_time || (doc as any)?.updated_at,
+    ...(extraTags.length ? ({ extra_tags: extraTags } as any) : ({ extra_tags: [] } as any)),
   }
 }
 
@@ -411,6 +582,19 @@ const unlockRelatedContact = async (item: RelatedDemandItem) => {
 const isFavorited = ref(false)
 const favoriting = ref(false)
 
+const resolveFavoriteState = async (ids: string[]): Promise<boolean> => {
+  const uniq = Array.from(new Set(ids.map((x) => String(x || '').trim()).filter(Boolean)))
+  for (const id of uniq) {
+    try {
+      const ok = await isFavorite(id)
+      if (ok) return true
+    } catch (e) {
+      console.error('Failed to check favorite state:', e)
+    }
+  }
+  return false
+}
+
 // 相似需求相关
 const similarDemands = ref<Array<{
   id?: string
@@ -445,6 +629,14 @@ const relatedDemands = computed<RelatedDemandItem[]>(() => {
   const selfId = String(self?.id || '').trim()
   const selfProvider = String(self?.provider_user_id || '').trim()
   const selfText = String(self?.raw_text || '').trim()
+  const normRawText = (v: string): string => {
+    const s = String(v || '')
+      .replace(/[\s\u00A0]+/g, '')
+      .replace(/[\-—–~～_:：；;，,。.!！?？/\\|]+/g, '')
+      .trim()
+    return s
+  }
+  const selfTextNorm = normRawText(selfText)
 
   const others: RelatedDemandItem[] = (similarDemands.value || [])
     .map((s) => ({
@@ -462,11 +654,23 @@ const relatedDemands = computed<RelatedDemandItem[]>(() => {
       if (selfId && x.id && String(x.id).trim() === selfId) return false
       const sameProvider = selfProvider && String(x.provider_user_id || '').trim() === selfProvider
       const simToSelf = calculateTextSimilarity(selfText, String(x.raw_text || ''))
+      const xTextNorm = normRawText(String(x.raw_text || '').trim())
+      if (selfTextNorm && xTextNorm && xTextNorm === selfTextNorm) return false
       if (simToSelf === 1 && sameProvider) return false
       return true
     })
 
-  return [...out, ...others]
+  // Ensure unique raw_text among others to avoid rendering visually identical items multiple times.
+  const seenText = new Set<string>()
+  const dedupedOthers: RelatedDemandItem[] = []
+  for (const it of others) {
+    const key = normRawText(String(it.raw_text || '').trim())
+    if (key && seenText.has(key)) continue
+    if (key) seenText.add(key)
+    dedupedOthers.push(it)
+  }
+
+  return [...out, ...dedupedOthers]
 })
 
 const loadRelatedProfiles = async (items: RelatedDemandItem[]) => {
@@ -488,18 +692,17 @@ onLoad(async (options) => {
   const uniqueId = (options && (options as any).uniqueId) as string | undefined
   const id = (options && (options as any).id) as string | undefined
   try {
-    try {
-      const state: any = await ensureLogin()
-      isGuest.value = !!(state && isGuestUser(state.user))
-    } catch {
-      isGuest.value = false
-    }
+    await refreshAuthState()
 
     loading.value = true
     demand.value = null
+    demandId.value = ''
+    uniqueDemandId.value = ''
+    currentRawId.value = ''
     if (uniqueId) {
       await ensureLogin()
       const decodedUniqueId = safeDecodeURIComponent(String(uniqueId))
+      uniqueDemandId.value = decodedUniqueId
       demandId.value = decodedUniqueId
       const u = await fetchUniqueDemandById(decodedUniqueId)
       if (u) {
@@ -511,6 +714,8 @@ onLoad(async (options) => {
             const raw = await fetchSapDemandById(canonicalRawId)
             if (raw && raw.raw_text) {
               currentRawId.value = canonicalRawId
+              // Use raw id as the canonical interaction key (favorites/contact unlock/status)
+              demandId.value = canonicalRawId
               const parsed = parseDemandText(String(raw.raw_text || '').trim())
               const moduleCodes = (parsed.module_codes || [])
                 .map((x) => String(x || '').trim().toUpperCase())
@@ -560,10 +765,41 @@ onLoad(async (options) => {
     if (id) {
       const decodedId = safeDecodeURIComponent(String(id))
       demandId.value = decodedId
-      const fromCloud = await fetchSapDemandById(decodedId)
-      if (fromCloud) {
+      let fromCloud: SapDemandRecord | null = null
+      try {
+        fromCloud = await fetchSapDemandById(decodedId)
+      } catch (e) {
+        console.error('Failed to load raw demand by id, will fallback via unique mapping:', e)
+        fromCloud = null
+      }
+      if (!fromCloud) {
+        // Raw record may be deleted; fallback via unique table canonical_raw_id mapping.
+        const uid = await lookupUniqueIdByRawId(decodedId)
+        if (uid) {
+          uniqueDemandId.value = uid
+          demandId.value = uid
+          const u = await fetchUniqueDemandById(uid)
+          if (u) {
+            const mapped = mapUniqueToDemand(u)
+            demand.value = mapped
+            viewerProfile.value = await getUserProfileOnly()
+            loadUnlockState()
+            await loadSimilarDemands(mapped.raw_text, undefined, undefined)
+            await loadStatusData()
+            await loadReliabilityData()
+            isFavorited.value = await resolveFavoriteState([uid, decodedId])
+            return
+          }
+        }
+      } else {
         demand.value = fromCloud
         currentRawId.value = decodedId
+
+        const linkedUnique = String((fromCloud as any)?.unique_demand_id || '').trim()
+        if (linkedUnique) {
+          uniqueDemandId.value = linkedUnique
+        }
+
         viewerProfile.value = await getUserProfileOnly()
         loadUnlockState()
         // 加载相似需求
@@ -572,11 +808,7 @@ onLoad(async (options) => {
         await loadStatusData()
         await loadReliabilityData()
         // 检查收藏状态
-        try {
-          isFavorited.value = await isFavorite(decodedId)
-        } catch (e) {
-          console.error('Failed to check favorite state:', e)
-        }
+        isFavorited.value = await resolveFavoriteState([uniqueDemandId.value, decodedId])
         return
       }
     }
@@ -800,14 +1032,27 @@ const toggleFavorite = async () => {
   favoriting.value = true
   try {
     await requireNonGuest()
+
+    const rawId = String(currentRawId.value || '').trim()
+    const uniqueId = String(uniqueDemandId.value || '').trim()
+    const addId = uniqueId || String(demandId.value || '').trim()
+    const removeIds = Array.from(new Set([addId, rawId, uniqueId].map((x) => String(x || '').trim()).filter(Boolean)))
     
     if (isFavorited.value) {
-      await removeFavorite(demandId.value)
+      for (const rid of removeIds) {
+        try {
+          await removeFavorite(rid)
+        } catch (e: any) {
+          const msg = String(e?.message || '')
+          if (msg.includes('未收藏')) continue
+          throw e
+        }
+      }
       isFavorited.value = false
       emitFavoriteChanged()
       uni.showToast({ title: '已取消收藏', icon: 'success' })
     } else {
-      await addFavorite(demandId.value)
+      await addFavorite(addId)
       isFavorited.value = true
       emitFavoriteChanged()
       uni.showToast({ title: '收藏成功', icon: 'success' })
@@ -996,15 +1241,27 @@ const goToContact = () => {
 const getRelatedProviderProfile = (item: RelatedDemandItem): UserProfile | null => {
   const pid = String(item.provider_user_id || '').trim()
   if (!pid) return null
+  const viewerUid = String(viewerProfile.value?.uid || '').trim()
+  if (viewerUid && pid === viewerUid) return viewerProfile.value
   return relatedProfilesById.value[pid] || null
+}
+
+const isSelfProvider = (item: RelatedDemandItem): boolean => {
+  const pid = String(item.provider_user_id || '').trim()
+  if (!pid) return false
+  const viewerUid = String(viewerProfile.value?.uid || '').trim()
+  if (!viewerUid) return false
+  return pid === viewerUid
 }
 
 const getRelatedProviderName = (item: RelatedDemandItem): string => {
   const p = getRelatedProviderProfile(item)
   const nameFromProfile = String(p?.nickname || '').trim()
+  const nameFromItem = String((item as any)?.provider_name || '').trim()
   const bad = new Set(['', '未知', '匿名', '匿名用户'])
 
   if (nameFromProfile && !bad.has(nameFromProfile)) return nameFromProfile
+  if (nameFromItem && !bad.has(nameFromItem)) return nameFromItem
   return '未知'
 }
 

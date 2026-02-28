@@ -131,6 +131,13 @@
             </button>
           </view>
 
+          <view class="section">
+            <text class="section-title">合规与申诉</text>
+            <button class="primary-btn" @click="goToAccountDelete" style="margin-top: 14rpx;">
+              账号注销 / 个人信息删除申请
+            </button>
+          </view>
+
           <!-- Tab 2: 我发布的需求 -->
           <view v-if="activeTab === 'demands'" class="tab-panel">
             <view class="section">
@@ -149,7 +156,7 @@
                   v-for="demand in myDemands"
                   :key="demand.id"
                   class="demand-item"
-                  @tap="goToDemandDetail(demand.id)"
+                  @tap="goToDemandDetail(demand)"
                 >
                   <text class="demand-text">{{ demand.raw_text }}</text>
                   <view class="demand-meta">
@@ -159,6 +166,11 @@
                   </view>
                 </view>
               </view>
+            </view>
+
+            <view class="demands-fab-spacer"></view>
+            <view class="demands-fab">
+              <button class="demands-fab-btn" @click="goToPublish">发布需求</button>
             </view>
           </view>
 
@@ -177,7 +189,7 @@
                   v-for="favorite in myFavorites"
                   :key="favorite._id"
                   class="favorite-item"
-                  @tap="goToDemandDetail(favorite.demand_id)"
+                  @tap="goToDemandDetail(favorite)"
                 >
                   <text class="favorite-text">{{ favorite.demand_text || '需求已删除' }}</text>
                   <text class="favorite-time">{{ formatFavoriteTime(favorite.createdAt) }}</text>
@@ -200,30 +212,46 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { logout, auth, app, ensureLogin } from '../../utils/cloudbase'
+import { logout, ensureLogin } from '../../utils/cloudbase'
 import { getLastLoginIdentifier, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile, type UserProfile } from '../../utils/user'
 import { getRewardPoints, getThresholdPoints } from '../../utils/points-config'
 import { navigateTo } from '../../utils'
 import { isAdminUid } from '../../utils/admin'
 
 function getApiBase(): string {
-  const fromEnv =
-    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
-  if (fromEnv) return String(fromEnv)
-
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\\.0\\.0\\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced =
+          (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+        const forcedTrim = String(forced || '').trim()
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forcedTrim)) return forcedTrim
+        return 'http://127.0.0.1:3001'
+      }
     }
   } catch {
     // ignore
   }
 
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
   return 'https://api.sapboss.com'
 }
 
 const API_BASE = getApiBase()
+
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
 
 const userInfo = ref<any>(null)
 const accountInfo = ref<any>(null)
@@ -294,9 +322,8 @@ function getH5ApiBasesForRetry(base: string): string[] {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
       if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-        if (/\:3004\b/.test(b0)) out.push(b0.replace(':3004', ':3005'))
-        else if (/\:3005\b/.test(b0)) out.push(b0.replace(':3005', ':3004'))
-        else out.push('http://127.0.0.1:3004', 'http://127.0.0.1:3005')
+        if (/^http:\/\/localhost\b/i.test(b0)) out.push(b0.replace(/^http:\/\/localhost\b/i, 'http://127.0.0.1'))
+        else if (/^http:\/\/127\.0\.0\.1\b/i.test(b0)) out.push(b0.replace(/^http:\/\/127\.0\.0\.1\b/i, 'http://localhost'))
       }
     }
   } catch {
@@ -498,64 +525,41 @@ const goToLogin = () => {
 // 加载我发布的需求
 const loadMyDemands = async () => {
   if (!userInfo.value?.uid) return
-  if (isH5Runtime()) {
-    myDemandsLoading.value = true
-    try {
-      const bases = getH5ApiBasesForRetry(API_BASE)
-      const header = {
-        'x-uid': String(userInfo.value.uid || ''),
-        'x-nickname': encodeURIComponent(String(userInfo.value.nickName || userInfo.value.nickname || '')),
-      }
-
-      let okResp: any = null
-      for (const base of bases) {
-        try {
-          const resp: any = await requestJson({
-            url: `${String(base).replace(/\/+$/, '')}/demands/mine_raw?limit=50`,
-            method: 'GET',
-            header,
-          })
-          if (resp && resp.ok && Array.isArray(resp.demands)) {
-            okResp = resp
-            break
-          }
-        } catch {
-          // try next base
-        }
-      }
-
-      if (!okResp) {
-        myDemands.value = []
-        return
-      }
-
-      myDemands.value = (okResp.demands || []).map((doc: any) => ({
-        id: String(doc.id || doc._id || '').trim(),
-        ...doc,
-      }))
-    } catch (e) {
-      console.error('加载我发布的需求失败(H5):', e)
-      myDemands.value = []
-    } finally {
-      myDemandsLoading.value = false
-    }
-    return
-  }
   myDemandsLoading.value = true
   try {
-    const db = app.database()
-    const res = await db
-      .collection('sap_demands_raw')
-      .where({
-        provider_user_id: userInfo.value.uid,
-      })
-      .orderBy('createdAt', 'desc')
-      .limit(50)
-      .get()
-    
-    myDemands.value = (res.data || []).map((doc: any) => ({
-      id: doc._id,
+    const bases = getH5ApiBasesForRetry(API_BASE)
+    const token = getStoredToken()
+    const header: any = {
+      'x-uid': String(userInfo.value.uid || ''),
+      'x-nickname': encodeURIComponent(String(userInfo.value.nickName || userInfo.value.nickname || '')),
+    }
+    if (token) header.Authorization = `Bearer ${token}`
+
+    let okResp: any = null
+    for (const base of bases) {
+      try {
+        const resp: any = await requestJson({
+          url: `${String(base).replace(/\/+$/, '')}/demands/mine_raw?limit=50`,
+          method: 'GET',
+          header,
+        })
+        if (resp && resp.ok && Array.isArray(resp.demands)) {
+          okResp = resp
+          break
+        }
+      } catch {
+        // try next base
+      }
+    }
+
+    if (!okResp) {
+      myDemands.value = []
+      return
+    }
+
+    myDemands.value = (okResp.demands || []).map((doc: any) => ({
       ...doc,
+      id: String(doc.id || doc._id || '').trim(),
     }))
   } catch (e) {
     console.error('加载我发布的需求失败:', e)
@@ -568,46 +572,88 @@ const loadMyDemands = async () => {
 // 加载我的收藏
 const loadMyFavorites = async () => {
   if (!userInfo.value?.uid) return
-  if (isH5Runtime()) {
-    myFavorites.value = []
-    return
-  }
   myFavoritesLoading.value = true
   try {
-    const db = app.database()
-    const res = await db
-      .collection('sap_demand_favorites')
-      .where({
-        user_id: userInfo.value.uid,
-      })
-      .orderBy('createdAt', 'desc')
-      .limit(50)
-      .get()
-    
-    // 获取收藏的需求信息
-    const favorites = res.data || []
-    const demandIds = favorites.map((f: any) => f.demand_id).filter(Boolean)
-    
-    if (demandIds.length > 0) {
-      const demandsRes = await db
-        .collection('sap_demands_raw')
-        .where({
-          _id: db.command.in(demandIds),
-        })
-        .get()
-      
-      const demandsMap = new Map()
-      ;(demandsRes.data || []).forEach((d: any) => {
-        demandsMap.set(d._id, d)
-      })
-      
-      myFavorites.value = favorites.map((f: any) => ({
-        ...f,
-        demand_text: demandsMap.get(f.demand_id)?.raw_text || '需求已删除',
-      }))
-    } else {
-      myFavorites.value = []
+    const bases = getH5ApiBasesForRetry(API_BASE)
+    const token = getStoredToken()
+    const header: any = {
+      'x-uid': String(userInfo.value.uid || ''),
+      'x-nickname': encodeURIComponent(String(userInfo.value.nickName || userInfo.value.nickname || '')),
     }
+    if (token) header.Authorization = `Bearer ${token}`
+
+    let favResp: any = null
+    for (const base of bases) {
+      try {
+        const resp: any = await requestJson({
+          url: `${String(base).replace(/\/+$/, '')}/favorites/list?limit=50`,
+          method: 'GET',
+          header,
+        })
+        if (resp && resp.ok && Array.isArray(resp.favorites)) {
+          favResp = resp
+          break
+        }
+      } catch {
+        // try next base
+      }
+    }
+
+    if (!favResp) {
+      myFavorites.value = []
+      return
+    }
+
+    const favorites = favResp.favorites || []
+
+    // v2 favorites will return unique_demand_id + demand_text directly.
+    // legacy favorites may only have numeric demand_id and need /demands/by_ids to resolve text.
+    const legacyIds = favorites
+      .map((f: any) => String(f.demand_id || '').trim())
+      .filter((id: string) => /^\d+$/.test(id))
+
+    let demandsMap = new Map<string, any>()
+    if (legacyIds.length) {
+      let demandsResp: any = null
+      for (const base of bases) {
+        try {
+          const resp: any = await requestJson({
+            url: `${String(base).replace(/\/+$/, '')}/demands/by_ids`,
+            method: 'POST',
+            data: { ids: legacyIds },
+            header,
+          })
+          if (resp && resp.ok && Array.isArray(resp.demands)) {
+            demandsResp = resp
+            break
+          }
+        } catch {
+          // try next base
+        }
+      }
+
+      ;((demandsResp && demandsResp.demands) || []).forEach((d: any) => {
+        const id = String((d && (d.id || d._id)) || '').trim()
+        if (id) demandsMap.set(id, d)
+      })
+    }
+
+    myFavorites.value = favorites
+      .map((f: any) => {
+        const did = String(f.demand_id || '').trim()
+        const d = /^\d+$/.test(did) ? demandsMap.get(did) : null
+        const uniqueIdFromFav = String(f.unique_demand_id || (f as any).uniqueId || (f as any).unique_id || '').trim()
+        const uniqueIdFromDemand = d ? String(d.unique_demand_id || (d as any).uniqueId || (d as any).unique_id || '').trim() : ''
+        const uniqueId = uniqueIdFromFav || uniqueIdFromDemand
+        const textFromFav = String(f.demand_text || '').trim()
+        const textFromDemand = d ? String(d.raw_text || '').trim() : ''
+        return {
+          ...f,
+          demand_text: textFromFav || textFromDemand || '需求已删除',
+          unique_demand_id: uniqueId,
+        }
+      })
+      .filter((x: any) => x && x.unique_demand_id)
   } catch (e) {
     console.error('加载我的收藏失败:', e)
     myFavorites.value = []
@@ -662,9 +708,20 @@ const formatFavoriteTime = (timestamp: any) => {
 }
 
 // 跳转到需求详情
-const goToDemandDetail = (demandId: string) => {
-  if (!demandId) return
-  navigateTo(`/pages/demand/detail?id=${demandId}`)
+const goToDemandDetail = (demandOrId: any) => {
+  const rawId = String(typeof demandOrId === 'string' ? demandOrId : (demandOrId && (demandOrId.id || demandOrId._id)) || '').trim()
+  const uniqueId = String(typeof demandOrId === 'object' && demandOrId ? (demandOrId.unique_demand_id || (demandOrId as any).uniqueId) : '').trim()
+  if (/^\d+$/.test(rawId)) {
+    navigateTo(`/pages/demand/detail?id=${encodeURIComponent(rawId)}`)
+    return
+  }
+  if (uniqueId) {
+    navigateTo(`/pages/demand/detail?uniqueId=${encodeURIComponent(uniqueId)}`)
+    return
+  }
+  if (rawId) {
+    navigateTo(`/pages/demand/detail?id=${encodeURIComponent(rawId)}`)
+  }
 }
 
 // 跳转到发布需求
@@ -674,6 +731,10 @@ const goToPublish = () => {
 
 const goToAdmin = () => {
   navigateTo('/pages/admin/index')
+}
+
+const goToAccountDelete = () => {
+  navigateTo('/pages/legal/account-delete')
 }
 
 // 监听 activeTab 变化
@@ -762,6 +823,28 @@ onMounted(() => {
   font-size: 28rpx;
 }
 
+.demands-fab-spacer {
+  height: 160rpx;
+}
+
+.demands-fab {
+  position: fixed;
+  left: 40rpx;
+  right: 40rpx;
+  bottom: 40rpx;
+  z-index: 50;
+}
+
+.demands-fab-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: #fff;
+  border-radius: 16rpx;
+  padding: 22rpx 0;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
 .switch-row {
   flex-direction: row;
   align-items: center;
@@ -788,7 +871,7 @@ onMounted(() => {
 .primary-btn {
   width: 100%;
   height: 88rpx;
-  background: #667eea;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
   color: white;
   border: none;
   border-radius: 12rpx;
@@ -798,7 +881,7 @@ onMounted(() => {
 }
 
 .primary-btn:active {
-  background: #5a6fd8;
+  background: #45a049;
 }
 
 .logout-btn {

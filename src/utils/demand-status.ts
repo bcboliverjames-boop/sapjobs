@@ -1,4 +1,60 @@
-import { app, ensureLogin, requireNonGuest } from './cloudbase'
+import { getOrCreateUserProfile } from './user'
+
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forcedRaw = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        const forced = String(forcedRaw || '').trim()
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forced)) return forced
+        return 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function requestJson<T = any>(opts: {
+  url: string
+  method?: 'GET' | 'POST'
+  data?: any
+  header?: any
+}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const storedToken = getStoredToken()
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 /**
  * 标记需求状态
@@ -11,41 +67,25 @@ export async function markDemandStatus(
   status: 'applied' | 'interviewed' | 'onboarded' | 'closed',
   nickname: string
 ): Promise<void> {
-  await requireNonGuest()
-  const db = app.database()
-  const user = await getCurrentUser()
-  
-  // 检查是否已标记
-  const existing = await db
-    .collection('sap_demand_status')
-    .where({
-      demand_id: demandId,
-      user_id: user.uid,
-      status: status,
-    })
-    .get()
-  
-  if (existing.data && existing.data.length > 0) {
-    throw new Error('您已标记过此状态')
+  const user = await getOrCreateUserProfile()
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/mark`,
+    method: 'POST',
+    data: {
+      demandId,
+      status,
+      nickname,
+    },
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'DEMAND_STATUS_MARK_FAILED')
   }
-  
-  // 保存状态标记
-  const dataToAdd = {
-    demand_id: demandId,
-    user_id: user.uid,
-    status: status,
-    nickname: nickname,
-    createdAt: new Date(),
-  }
-  
-  console.log('准备保存状态标记:', dataToAdd)
-  
-  const result = await db.collection('sap_demand_status').add(dataToAdd)
-  
-  console.log('状态标记保存成功，返回结果:', result)
-  
-  // 等待一小段时间，确保数据已写入
-  await new Promise(resolve => setTimeout(resolve, 300))
 }
 
 /**
@@ -56,22 +96,28 @@ export async function unmarkDemandStatus(
   status: 'applied' | 'interviewed' | 'onboarded' | 'closed',
   userId: string
 ): Promise<void> {
-  await requireNonGuest()
-  const db = app.database()
-  
-  const existing = await db
-    .collection('sap_demand_status')
-    .where({
-      demand_id: demandId,
-      user_id: userId,
-      status: status,
-    })
-    .get()
-  
-  if (existing.data && existing.data.length > 0) {
-    for (const doc of existing.data) {
-      await db.collection('sap_demand_status').doc(doc._id).remove()
-    }
+  const user = await getOrCreateUserProfile()
+  const uid = String(user.uid || '').trim()
+  if (uid && userId && String(userId || '').trim() !== uid) {
+    throw new Error('FORBIDDEN')
+  }
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/unmark`,
+    method: 'POST',
+    data: {
+      demandId,
+      status,
+      userId: uid || userId,
+    },
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'DEMAND_STATUS_UNMARK_FAILED')
   }
 }
 
@@ -86,41 +132,21 @@ export async function getDemandStatusCounts(
   onboarded: number
   closed: number
 }> {
-  await ensureLogin()
-  const db = app.database()
-  
-  console.log('查询状态数量，需求ID:', demandId)
-  
-  const res = await db
-    .collection('sap_demand_status')
-    .where({
-      demand_id: demandId,
-    })
-    .get()
-  
-  console.log('查询结果:', res)
-  console.log('查询到的数据:', res.data)
-  
-  const counts = {
-    applied: 0,
-    interviewed: 0,
-    onboarded: 0,
-    closed: 0,
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/counts?demandId=${encodeURIComponent(String(demandId || '').trim())}`,
+    method: 'GET',
+  })
+
+  if (!resp || !resp.ok || !resp.counts) {
+    return { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
   }
-  
-  if (res.data) {
-    for (const doc of res.data) {
-      const status = doc.status as keyof typeof counts
-      console.log('处理状态:', status, '文档:', doc)
-      if (status in counts) {
-        counts[status]++
-      }
-    }
+
+  return {
+    applied: Number(resp.counts.applied || 0),
+    interviewed: Number(resp.counts.interviewed || 0),
+    onboarded: Number(resp.counts.onboarded || 0),
+    closed: Number(resp.counts.closed || 0),
   }
-  
-  console.log('最终统计数量:', counts)
-  
-  return counts
 }
 
 /**
@@ -130,33 +156,16 @@ export async function getLatestStatusNicknames(
   demandId: string,
   statuses: Array<'onboarded' | 'closed'>
 ): Promise<Record<'onboarded' | 'closed', string | undefined>> {
-  await ensureLogin()
-  const db = app.database()
-  const _ = db.command
-  
-  const res = await db
-    .collection('sap_demand_status')
-    .where({
-      demand_id: demandId,
-      status: _.in(statuses),
-    })
-    .orderBy('createdAt', 'desc')
-    .get()
-  
-  const result: Record<'onboarded' | 'closed', string | undefined> = {
-    onboarded: undefined,
-    closed: undefined,
-  }
-  
-  if (res.data) {
-    for (const doc of res.data) {
-      const status = doc.status as 'onboarded' | 'closed'
-      if (statuses.includes(status) && !result[status]) {
-        result[status] = doc.nickname
-      }
-    }
-  }
-  
+  const qs = encodeURIComponent(statuses.join(','))
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/latest_nicknames?demandId=${encodeURIComponent(String(demandId || '').trim())}&statuses=${qs}`,
+    method: 'GET',
+  })
+
+  const result: Record<'onboarded' | 'closed', string | undefined> = { onboarded: undefined, closed: undefined }
+  if (!resp || !resp.ok || !resp.nicknames) return result
+  if (resp.nicknames.onboarded) result.onboarded = String(resp.nicknames.onboarded)
+  if (resp.nicknames.closed) result.closed = String(resp.nicknames.closed)
   return result
 }
 
@@ -167,22 +176,18 @@ export async function getUserDemandStatuses(
   demandId: string,
   userId: string
 ): Promise<string[]> {
-  await ensureLogin()
-  const db = app.database()
-  
-  const res = await db
-    .collection('sap_demand_status')
-    .where({
-      demand_id: demandId,
-      user_id: userId,
-    })
-    .get()
-  
-  if (!res.data || res.data.length === 0) {
-    return []
-  }
-  
-  return res.data.map((doc: any) => doc.status)
+  const token = getStoredToken()
+  if (!token) return []
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/user?demandId=${encodeURIComponent(String(demandId || '').trim())}&userId=${encodeURIComponent(
+      String(userId || '').trim(),
+    )}`,
+    method: 'GET',
+  })
+
+  if (!resp || !resp.ok || !Array.isArray(resp.statuses)) return []
+  return resp.statuses.map((x: any) => String(x || '').trim()).filter(Boolean)
 }
 
 /**
@@ -193,43 +198,25 @@ export async function markDemandReliability(
   reliable: boolean,
   nickname: string
 ): Promise<void> {
-  await requireNonGuest()
-  const db = app.database()
-  const user = await getCurrentUser()
-  
-  // 检查是否已评价
-  const existing = await db
-    .collection('sap_demand_reliability')
-    .where({
-      demand_id: demandId,
-      user_id: user.uid,
-    })
-    .get()
-  
-  // 如果已评价，先删除旧评价
-  if (existing.data && existing.data.length > 0) {
-    for (const doc of existing.data) {
-      await db.collection('sap_demand_reliability').doc(doc._id).remove()
-    }
+  const user = await getOrCreateUserProfile()
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_reliability/mark`,
+    method: 'POST',
+    data: {
+      demandId,
+      reliable,
+      nickname,
+    },
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'DEMAND_RELIABILITY_MARK_FAILED')
   }
-  
-  // 保存新评价
-  const dataToAdd = {
-    demand_id: demandId,
-    user_id: user.uid,
-    reliable: reliable,
-    nickname: nickname,
-    createdAt: new Date(),
-  }
-  
-  console.log('准备保存评价:', dataToAdd)
-  
-  const result = await db.collection('sap_demand_reliability').add(dataToAdd)
-  
-  console.log('评价保存成功，返回结果:', result)
-  
-  // 等待一小段时间，确保数据已写入
-  await new Promise(resolve => setTimeout(resolve, 300))
 }
 
 /**
@@ -239,21 +226,27 @@ export async function unmarkDemandReliability(
   demandId: string,
   userId: string
 ): Promise<void> {
-  await requireNonGuest()
-  const db = app.database()
-  
-  const existing = await db
-    .collection('sap_demand_reliability')
-    .where({
-      demand_id: demandId,
-      user_id: userId,
-    })
-    .get()
-  
-  if (existing.data && existing.data.length > 0) {
-    for (const doc of existing.data) {
-      await db.collection('sap_demand_reliability').doc(doc._id).remove()
-    }
+  const user = await getOrCreateUserProfile()
+  const uid = String(user.uid || '').trim()
+  if (uid && userId && String(userId || '').trim() !== uid) {
+    throw new Error('FORBIDDEN')
+  }
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_reliability/unmark`,
+    method: 'POST',
+    data: {
+      demandId,
+      userId: uid || userId,
+    },
+    header: {
+      'x-uid': String(user.uid || ''),
+      'x-nickname': String(user.nickname || ''),
+    },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'DEMAND_RELIABILITY_UNMARK_FAILED')
   }
 }
 
@@ -266,40 +259,19 @@ export async function getDemandReliabilityCounts(
   reliable: number
   unreliable: number
 }> {
-  await ensureLogin()
-  const db = app.database()
-  
-  console.log('查询评价数量，需求ID:', demandId)
-  
-  const res = await db
-    .collection('sap_demand_reliability')
-    .where({
-      demand_id: demandId,
-    })
-    .get()
-  
-  console.log('查询结果:', res)
-  console.log('查询到的数据:', res.data)
-  
-  const counts = {
-    reliable: 0,
-    unreliable: 0,
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_reliability/counts?demandId=${encodeURIComponent(String(demandId || '').trim())}`,
+    method: 'GET',
+  })
+
+  if (!resp || !resp.ok || !resp.counts) {
+    return { reliable: 0, unreliable: 0 }
   }
-  
-  if (res.data) {
-    for (const doc of res.data) {
-      console.log('处理评价:', doc.reliable, '文档:', doc)
-      if (doc.reliable === true) {
-        counts.reliable++
-      } else if (doc.reliable === false) {
-        counts.unreliable++
-      }
-    }
+
+  return {
+    reliable: Number(resp.counts.reliable || 0),
+    unreliable: Number(resp.counts.unreliable || 0),
   }
-  
-  console.log('最终统计数量:', counts)
-  
-  return counts
 }
 
 /**
@@ -309,32 +281,18 @@ export async function getUserDemandReliability(
   demandId: string,
   userId: string
 ): Promise<boolean | null> {
-  await ensureLogin()
-  const db = app.database()
-  
-  const res = await db
-    .collection('sap_demand_reliability')
-    .where({
-      demand_id: demandId,
-      user_id: userId,
-    })
-    .get()
-  
-  if (!res.data || res.data.length === 0) {
-    return null
-  }
-  
-  return res.data[0].reliable === true ? true : res.data[0].reliable === false ? false : null
-}
+  const token = getStoredToken()
+  if (!token) return null
 
-/**
- * 获取当前用户（内部辅助函数）
- */
-async function getCurrentUser() {
-  const state = await requireNonGuest()
-  if (!state || !state.user) {
-    throw new Error('当前未登录')
-  }
-  return state.user as { uid: string }
-}
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_reliability/user?demandId=${encodeURIComponent(String(demandId || '').trim())}&userId=${encodeURIComponent(
+      String(userId || '').trim(),
+    )}`,
+    method: 'GET',
+  })
 
+  if (!resp || !resp.ok) return null
+  if (resp.reliable === true) return true
+  if (resp.reliable === false) return false
+  return null
+}

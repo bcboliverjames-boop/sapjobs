@@ -1,4 +1,6 @@
 import { parseDemandText } from './demand-parser'
+import { requireAdmin } from './admin'
+import { sapModuleCodeToLabel, normalizeSapModuleToken } from './sap-modules'
 
 export type SapDemandRecord = {
   id?: string
@@ -12,6 +14,7 @@ export type SapDemandRecord = {
   daily_rate?: string // 人天价格
   provider_name: string
   provider_user_id?: string // 信息提供者的用户ID，用于获取联系方式
+  unique_demand_id?: string
   createdAt?: Date | string // 创建时间
   updatedAt?: Date | string // 更新时间
 }
@@ -380,17 +383,46 @@ export const SAMPLE_DEMANDS: SapDemandRecord[] = [
   },
 ]
 
-const DEMANDS_API_BASE =
-  (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+function getDemandsApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        return forced ? String(forced) : 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {}
+
+  return 'https://api.sapboss.com'
+}
+
+const DEMANDS_API_BASE = getDemandsApiBase()
+
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
 
 function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
   return new Promise((resolve, reject) => {
+    const token = getStoredToken()
     uni.request({
       url: opts.url,
       method: opts.method || 'GET',
       data: opts.data,
       header: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.header || {}),
       },
       success: (res) => resolve((res as any)?.data as T),
@@ -399,9 +431,21 @@ function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data
   })
 }
 
-// 将示例数据批量写入云数据库（第一次使用时）
-export async function seedSampleDemandsToCloud() {
-  return
+function toModuleCodes(codesLike: any): string[] {
+  const raw = Array.isArray(codesLike) ? codesLike : []
+  const out: string[] = []
+  raw
+    .map((x) => String(x || '').trim())
+    .map((x) => normalizeSapModuleToken(x) || String(x || '').trim().toUpperCase())
+    .filter(Boolean)
+    .forEach((x) => {
+      if (!out.includes(x)) out.push(x)
+    })
+  return out
+}
+
+function toModuleLabels(codes: string[]): string[] {
+  return (codes || []).map((c) => sapModuleCodeToLabel(String(c || '').trim()))
 }
 
 // 从云数据库获取需求列表
@@ -412,7 +456,8 @@ export async function fetchSapDemandsFromCloud(): Promise<SapDemandRecord[]> {
     method: 'GET',
   })
 
-  if (!resp || !resp.ok || !Array.isArray(resp.demands)) {
+  if (!resp) return []
+  if (!resp.ok) {
     throw new Error((resp && resp.error) || 'DEMANDS_LIST_FAILED')
   }
 
@@ -428,6 +473,7 @@ export async function fetchSapDemandsFromCloud(): Promise<SapDemandRecord[]> {
     daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
     provider_name: String(doc.provider_name || '未知'),
     provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
+    unique_demand_id: doc.unique_demand_id ? String(doc.unique_demand_id) : undefined,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }))
@@ -462,6 +508,7 @@ export async function fetchSapDemandById(id: string): Promise<SapDemandRecord | 
     daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
     provider_name: String(doc.provider_name || '未知'),
     provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
+    unique_demand_id: doc.unique_demand_id ? String(doc.unique_demand_id) : undefined,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }
@@ -476,7 +523,29 @@ export async function refreshAllDemandsTags(): Promise<{
   failed: number
   errors: string[]
 }> {
-  return { success: 0, failed: 0, errors: [] }
+  await requireAdmin()
+  const base = String(DEMANDS_API_BASE).replace(/\/+$/, '')
+
+  const days = 90
+  const limit = 5000
+
+  const resp: any = await requestJson({
+    url: `${base}/admin/unique_demands/reparse_recent`,
+    method: 'POST',
+    data: { days, limit },
+  })
+
+  if (!resp || !resp.ok) {
+    throw new Error((resp && resp.error) || 'ADMIN_UNIQUE_DEMANDS_REPARSE_FAILED')
+  }
+
+  const updated = Number(resp.updated || 0)
+  const requested = Number(resp.requested || 0)
+  return {
+    success: updated,
+    failed: Math.max(0, requested - updated),
+    errors: [],
+  }
 }
 
 /**
@@ -485,7 +554,45 @@ export async function refreshAllDemandsTags(): Promise<{
 export async function refreshDemandTags(demandId: string): Promise<boolean> {
   if (!demandId) return false
 
-  return false
+  await requireAdmin()
+  const base = String(DEMANDS_API_BASE).replace(/\/+$/, '')
+
+  const getResp: any = await requestJson({
+    url: `${base}/demands/${encodeURIComponent(String(demandId))}`,
+    method: 'GET',
+  })
+
+  if (!getResp || !getResp.ok || !getResp.demand) return false
+  const d = getResp.demand
+  const id = String(d && (d.id || d._id) || '').trim()
+  if (!id) return false
+
+  const rawText = String((d && d.raw_text) || '').trim()
+  const parsed = parseDemandText(rawText)
+  const module_codes = toModuleCodes(parsed.module_codes)
+  const module_labels = toModuleLabels(module_codes)
+
+  const updResp: any = await requestJson({
+    url: `${base}/admin/demands/batch_update_tags`,
+    method: 'POST',
+    data: {
+      updates: [
+        {
+          id,
+          module_codes,
+          module_labels,
+          city: String(parsed.city || '').trim(),
+          is_remote: typeof parsed.is_remote === 'boolean' ? parsed.is_remote : null,
+          duration_text: String(parsed.duration_text || '').trim(),
+          years_text: String(parsed.years_text || '').trim(),
+          language: String(parsed.language || '').trim(),
+          daily_rate: parsed.daily_rate ? String(parsed.daily_rate) : '',
+        },
+      ],
+    },
+  })
+
+  return !!(updResp && updResp.ok && Number(updResp.updated || 0) > 0)
 }
 
 

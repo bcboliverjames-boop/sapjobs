@@ -134,335 +134,106 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import {
-  app,
-  initCloudBase,
-  ensureLogin,
-  logout,
-  checkEnvironment,
-  isValidEnvId
-} from '../../utils/cloudbase'
 
-// 响应式数据
-const loading = ref(false)
 const envValid = ref(false)
-const envStatus = ref('检查中...')
-const loginStatus = ref('未知')
+const envStatus = ref('CloudBase 演示已下线')
+const loginStatus = ref('不可用')
+const loading = ref(false)
 const functionResult = ref('')
 const newRecord = ref('')
 const records = ref<any[]>([])
 const uploadProgress = ref(0)
 const uploadResult = ref('')
-// 新增
 const downloadResult = ref('')
 const imageSrc = ref('')
-
-let watcher:any = null // 监听器
+let watcher: any = null
 const realtimeRecord = ref('')
-let isListening = false; // 防止多次点击
-
+let isListening = false
 const cloudrunResult = ref('')
 
-// 检查环境配置
-const checkEnv = () => {
-  envValid.value = checkEnvironment()
-  envStatus.value = envValid.value ? '✅ 环境配置正常' : '❌ 环境ID未配置'
+const notifyOffline = () => {
+  uni.showToast({ title: 'CloudBase 演示已下线', icon: 'none' })
 }
 
-// 初始化
-onMounted(async () => {
-  checkEnv()
-  if (envValid.value) {
-    await initializeCloudBase()
-  }
+onMounted(() => {
+  envValid.value = false
+  envStatus.value = 'CloudBase 演示已下线'
+  loginStatus.value = '不可用'
 })
-
-// 初始化云开发
-const initializeCloudBase = async () => {
-  loading.value = true
-  try {
-    const success = await initCloudBase()
-    if (success) {
-      loginStatus.value = '已登录'
-    } else {
-      loginStatus.value = '未登录'
-    }
-  } catch (error) {
-    console.error('初始化失败:', error)
-    loginStatus.value = '初始化失败'
-  } finally {
-    loading.value = false
-  }
-}
 
 // 处理登录
 const handleLogin = async () => {
-  if (!envValid.value) {
-    uni.showToast({ title: '请先配置环境ID', icon: 'none' })
-    return
-  }
-  if(loginStatus.value === '未登录' || loginStatus.value === '登录失败' || loginStatus.value === '已退出') {
-    uni.navigateTo({
-      url: '/pages/login/password-login' // 跳转到登录页面
-    })
-    return
-  }
-  loading.value = true
-  try {
-    await ensureLogin()
-    loginStatus.value = '已登录'
-    uni.showToast({ title: '登录成功', icon: 'success' })
-  } catch (error) {
-    console.error('登录失败:', error)
-    loginStatus.value = '登录失败'
-    uni.showToast({ title: '登录失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  uni.navigateTo({ url: '/pages/login/password-login' })
 }
 
 // 处理退出登录
 const handleLogout = async () => {
-  loading.value = true
-  try {
-    await logout()
-    loginStatus.value = '已退出'
-    uni.showToast({ title: '已退出登录', icon: 'success' })
-  } catch (error) {
-    console.error('退出失败:', error)
-    uni.showToast({ title: '退出失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
 }
 
 // 调用云函数
 const callCloudFunction = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-
-  loading.value = true
-  try {
-    const result = await app.callFunction({ name: 'hello', data: { name: 'UniApp' } })
-    functionResult.value = JSON.stringify(result.result, null, 2)
-    uni.showToast({ title: '调用成功', icon: 'success' })
-  } catch (error: any) {
-    console.error('云函数调用失败:', error)
-    functionResult.value = '调用失败: ' + error.message
-    uni.showToast({ title: '调用失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  functionResult.value = 'CloudBase 演示已下线'
 }
 
 // 调用云托管服务
 const callCloudRunFunction = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-  loading.value = true
-  try {
-   const result = await app.callFunction({ 
-      name: 'express', 
-      method: 'GET', // 使用 GET 方法调用云托管服务
-      type: 'cloudrun', // 指定调用云托管服务
-      path: '/api/users', // 替换为你的云托管服务路径
-      header: { 'Content-Type': 'application/json; charset=UTF-8' },
-      data: {
-							key1: 'test value 1',
-							key2: 'test value 2'
-						},
-      } as any)
-    cloudrunResult.value = JSON.stringify(result.result, null, 2)
-    uni.showToast({ title: '调用成功', icon: 'success' })
-  } catch (error: any) {
-    console.error('云托管服务调用失败:', error)
-    cloudrunResult.value = '调用失败: ' + error.errMsg
-    uni.showToast({ title: '调用失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  cloudrunResult.value = 'CloudBase 演示已下线'
 }
 
 // 添加数据
 const addRecord = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-
-  if (!newRecord.value.trim()) {
-    uni.showToast({ title: '请输入内容', icon: 'none' })
-    return
-  }
-
-  loading.value = true
-  try {
-    const db = app.database()
-    await db.collection('test').add({
-      content: newRecord.value,
-      createTime: new Date().toLocaleString()
-    })
-    newRecord.value = ''
-    uni.showToast({ title: '添加成功', icon: 'success' })
-    await queryRecords() // 自动刷新列表
-  } catch (error: any) {
-    console.error('添加数据失败:', error)
-    uni.showToast({ title: '添加失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  records.value = []
+  uni.showToast({ title: 'CloudBase 演示已下线', icon: 'none' })
 }
 
 // 查询数据
 const queryRecords = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-
-  loading.value = true
-  try {
-    const db = app.database()
-    const result = await db.collection('test').orderBy('createTime', 'desc').limit(10).get()
-    records.value = result.data
-    uni.showToast({ title: '查询成功', icon: 'success' })
-  } catch (error: any) {
-    console.error('查询数据失败:', error)
-    uni.showToast({ title: '查询失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  records.value = []
 }
 
 // 实时监听数据变化
 const startListening = async() => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-  if (isListening) {
-    uni.showToast({ title: '已在监听中', icon: 'none' })
-    return
-  }
-  isListening = true
-
-  loading.value = true
-  const db = app.database()
-  
+  notifyOffline()
+  realtimeRecord.value = ''
   if (watcher) {
-    watcher.close() // 如果之前有监听器，先关闭它
+    try {
+      watcher.close()
+    } catch {}
+    watcher = null
   }
-  realtimeRecord.value = '' // 清空之前的记录
-  // 开始监听数据变化
-  const collection = db.collection('test')
-  watcher = collection.watch({
-    onChange: (snapshot:any) => {
-      console.log('数据变化:', snapshot)
-      if (snapshot.docChanges && snapshot.docChanges.length > 0) {
-        snapshot.docChanges.forEach((change: any) => {
-          switch (change.dataType) {
-            case 'add':  // 新增数据
-              realtimeRecord.value = `新增数据: ${change.doc.content} (${change.doc.createTime})`
-              break
-            case 'remove':  // 删除数据
-              realtimeRecord.value = `删除数据: ${change.doc.content} (${change.doc.createTime})`
-              break
-          }
-        });
-      }
-    },
-    onError: (error: any) => {
-      console.error('监听失败:', error)
-      uni.showToast({ title: '监听失败', icon: 'error' })
-    }
-  })
-  loading.value = false
+  isListening = false
 }
 // 停止监听
 const stopListening = () => {
   if (watcher) {
-    watcher.close()
-    watcher = null
-    isListening = false
-    realtimeRecord.value = '' // 清空实时记录
-    uni.showToast({ title: '监听已停止', icon: 'success' })
+    try {
+      watcher.close()
+    } catch {}
   }
+  watcher = null
+  isListening = false
+  realtimeRecord.value = ''
+  notifyOffline()
 }		
 		
 // 选择并上传文件
 const chooseAndUploadFile = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-
-  try {
-    const chooseResult: any = await new Promise((resolve, reject) => {
-      uni.chooseImage({
-        count: 1,
-        success: resolve,
-        fail: reject
-      })
-    })
-
-    if (chooseResult.tempFilePaths && chooseResult.tempFilePaths.length > 0) {
-      const filePath = chooseResult.tempFilePaths[0]
-      const cloudPath = `demo/${Date.now()}.jpg`
-
-      uploadProgress.value = 0
-      loading.value = true
-
-      const result = await app.uploadFile({
-        cloudPath,
-        filePath,
-        method: 'post',
-        onUploadProgress: (progressEvent: any) => {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          uploadProgress.value = progress
-        }
-      })
-
-      uploadResult.value = `文件上传成功\nFileID: ${result.fileID}`
-      uni.showToast({ title: '上传成功', icon: 'success' })
-    }
-  } catch (error: any) {
-    console.error('文件上传失败:', error)
-    uploadResult.value = '上传失败: ' + error.message
-    uni.showToast({ title: '上传失败', icon: 'error' })
-  } finally {
-    loading.value = false
-    uploadProgress.value = 0
-  }
+  notifyOffline()
+  uploadProgress.value = 0
+  uploadResult.value = 'CloudBase 演示已下线'
 }
 
 // 下载文件
 const downloadFile = async () => {
-  if (loginStatus.value !== '已登录') {
-    uni.showToast({ title: '请先登录', icon: 'none' })
-    return
-  }
-  try {
-    const fileID = 'your-cloud-file-id' // 替换为你的文件ID
-    loading.value = true
-
-    const result:any = await app.downloadFile({
-      fileID,
-    })
-
-    downloadResult.value = `文件下载成功\n临时路径: ${result.tempFilePath}`
-    uni.showToast({ title: '下载成功', icon: 'success' })
-    imageSrc.value = result.tempFilePath // 显示下载的图片
-  } catch (error: any) {
-    console.error('文件下载失败:', error)
-    downloadResult.value = '下载失败: ' + error.message
-    uni.showToast({ title: '下载失败', icon: 'error' })
-  } finally {
-    loading.value = false
-  }
+  notifyOffline()
+  downloadResult.value = 'CloudBase 演示已下线'
+  imageSrc.value = ''
 }
 
 

@@ -24,8 +24,30 @@ export type AccountInfo = {
   username?: string
 }
 
-const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced =
+          (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+        const forcedTrim = String(forced || '').trim()
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forcedTrim)) return forcedTrim
+        return 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {}
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_API_BASE_URL || (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
 const API_TOKEN_KEY = 'sapboss_api_token'
+const API_UID_KEY = 'sapboss_api_uid'
 const LAST_LOGIN_IDENTIFIER_KEY = 'sapboss_last_login_identifier'
 const LAST_LOGIN_IDENTIFIER_TYPE_KEY = 'sapboss_last_login_identifier_type'
 
@@ -169,6 +191,7 @@ export async function loginWithPassword(identifier: string, password: string): P
 
   try {
     uni.setStorageSync(API_TOKEN_KEY, token)
+    uni.setStorageSync(API_UID_KEY, uid)
   } catch {}
 
   persistLastLoginIdentifier(identifier)
@@ -202,6 +225,7 @@ export async function registerWithPassword(
 
   try {
     uni.setStorageSync(API_TOKEN_KEY, token)
+    uni.setStorageSync(API_UID_KEY, uid)
   } catch {}
 
   persistLastLoginIdentifier(identifier)

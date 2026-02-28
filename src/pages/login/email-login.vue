@@ -59,7 +59,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted } from 'vue'
-import { getEmailVerification, signInWithEmailCode, ensureLogin } from '../../utils/cloudbase'
 
 const isH5Runtime = () => {
   try {
@@ -105,7 +104,7 @@ const isEmailValid = computed(() => {
 })
 
 const canLogin = computed(() => {
-  return isEmailValid.value && verificationCode.value.length === 6 && verificationInfo.value
+  return isEmailValid.value
 })
 
 const goToPasswordLoginWithIdentifier = (identifier: string) => {
@@ -121,46 +120,13 @@ const goToPasswordLoginWithIdentifier = (identifier: string) => {
 
 // 获取验证码
 const getVerificationCode = async () => {
-  if (isH5) {
-    if (isEmailValid.value) {
-      goToPasswordLoginWithIdentifier(email.value)
-      return
-    }
-    uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
+  if (isEmailValid.value) {
+    uni.showToast({ title: '验证码登录已下线，请使用密码登录', icon: 'none' })
+    goToPasswordLoginWithIdentifier(email.value)
     return
   }
-  if (!isEmailValid.value) {
-    uni.showToast({
-      title: '请输入正确的邮箱地址',
-      icon: 'none'
-    })
-    return
-  }
-  
-  try {
-    loading.value = true
-    loadingText.value = '发送验证码中...'
-    
-    const result = await getEmailVerification(email.value)
-    verificationInfo.value = result
-    
-    uni.showToast({
-      title: '验证码发送成功',
-      icon: 'success'
-    })
-    
-    // 开始倒计时
-    startCountdown()
-    
-  } catch (error: any) {
-    console.error('获取验证码失败:', error)
-    uni.showToast({
-      title: error.message || '获取验证码失败',
-      icon: 'none'
-    })
-  } finally {
-    loading.value = false
-  }
+  uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
+  return
 }
 
 // 开始倒计时
@@ -177,51 +143,12 @@ const startCountdown = () => {
 
 // 邮箱验证码登录
 const handleLogin = async () => {
-  if (isH5) {
-    if (!isEmailValid.value) {
-      uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
-      return
-    }
-    goToPasswordLoginWithIdentifier(email.value)
+  if (!isEmailValid.value) {
+    uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
     return
   }
-  if (!canLogin.value) {
-    uni.showToast({
-      title: '请完善登录信息',
-      icon: 'none'
-    })
-    return
-  }
-  
-  try {
-    loading.value = true
-    loadingText.value = '登录中...'
-    
-    await signInWithEmailCode({
-      verificationInfo: verificationInfo.value,
-      verificationCode: verificationCode.value,
-      email: email.value
-    })
-    
-    uni.showToast({
-      title: '登录成功',
-      icon: 'success'
-    })
-    
-    // 延迟跳转到首页
-    setTimeout(() => {
-      goBackOrHome()
-    }, 1000)
-    
-  } catch (error: any) {
-    console.error('登录失败:', error)
-    uni.showToast({
-      title: error.message || '登录失败',
-      icon: 'none'
-    })
-  } finally {
-    loading.value = false
-  }
+  uni.showToast({ title: '验证码登录已下线，请使用密码登录', icon: 'none' })
+  goToPasswordLoginWithIdentifier(email.value)
 }
 
 // 返回登录方式选择

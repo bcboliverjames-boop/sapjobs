@@ -25,8 +25,22 @@ export type SapUniqueDemandDoc = {
 
 export const UNIQUE_DEMANDS_COLLECTION = 'sap_unique_demands'
 
-const UNIQUE_API_BASE =
-  (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || 'https://api.sapboss.com'
+function getUniqueApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+    }
+  } catch {}
+
+  return 'https://api.sapboss.com'
+}
+
+const UNIQUE_API_BASE = getUniqueApiBase()
 
 function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
   return new Promise((resolve, reject) => {

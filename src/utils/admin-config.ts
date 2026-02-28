@@ -1,4 +1,3 @@
-import { app, ensureLogin } from './cloudbase'
 import { requireAdmin } from './admin'
 
 export type SimilarityRule = 'text' | 'category' | 'hybrid'
@@ -16,6 +15,60 @@ export type AdminConfigDoc = {
 const COLLECTION = 'sap_admin_config'
 const CONFIG_KEY_FIELD = 'config_key'
 const CONFIG_KEY_VALUE = 'global'
+
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        return forced ? String(forced) : 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function requestJson<T = any>(opts: {
+  url: string
+  method?: 'GET' | 'POST'
+  data?: any
+  header?: any
+}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const storedToken = getStoredToken()
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 export function getDefaultAdminConfig(): AdminConfigDoc {
   return {
@@ -38,59 +91,23 @@ function normalizeThreshold(v: any): number {
 }
 
 export async function fetchAdminConfig(): Promise<AdminConfigDoc> {
-  await ensureLogin()
-  const db = app.database()
-
   try {
-    // Prefer singleton config by key, avoid relying on docId or orderBy
-    try {
-      const byKey: any = await db
-        .collection(COLLECTION)
-        .where({ [CONFIG_KEY_FIELD]: CONFIG_KEY_VALUE } as any)
-        .limit(1)
-        .get()
-      const doc = byKey && byKey.data && byKey.data[0]
-      if (doc) {
-        return {
-          _id: doc._id,
-          similarity_enabled: doc.similarity_enabled !== false,
-          similarity_threshold: normalizeThreshold(doc.similarity_threshold),
-          similarity_rule: normalizeRule(doc.similarity_rule),
-          updated_by: doc.updated_by,
-          updatedAt: doc.updatedAt,
-          updatedAt_ts: Number(doc.updatedAt_ts) || undefined,
-        }
-      }
-    } catch {
-      // ignore
-    }
+    const resp: any = await requestJson({
+      url: `${API_BASE}/config/similarity`,
+      method: 'GET',
+    })
 
-    // Fallback: pick a best-effort latest one among recent docs
-    const r: any = await db.collection(COLLECTION).limit(50).get()
-    const rows: any[] = (r && r.data) || []
-    if (!rows.length) return getDefaultAdminConfig()
-
-    let best: any = null
-    let bestTs = -1
-    for (const x of rows) {
-      const ts = Number(x && (x.updatedAt_ts ?? x.updated_at_ts))
-      if (Number.isFinite(ts) && ts > bestTs) {
-        best = x
-        bestTs = ts
-      }
-    }
-    if (!best) best = rows[0]
-    const doc = best
-    if (!doc) return getDefaultAdminConfig()
+    const cfg = resp && resp.ok ? resp.config : null
+    if (!cfg) return getDefaultAdminConfig()
 
     return {
-      _id: doc._id,
-      similarity_enabled: doc.similarity_enabled !== false,
-      similarity_threshold: normalizeThreshold(doc.similarity_threshold),
-      similarity_rule: normalizeRule(doc.similarity_rule),
-      updated_by: doc.updated_by,
-      updatedAt: doc.updatedAt,
-      updatedAt_ts: Number(doc.updatedAt_ts) || undefined,
+      _id: String((cfg as any)._id || '').trim() || undefined,
+      similarity_enabled: (cfg as any).similarity_enabled !== false,
+      similarity_threshold: normalizeThreshold((cfg as any).similarity_threshold),
+      similarity_rule: normalizeRule((cfg as any).similarity_rule),
+      updated_by: (cfg as any).updated_by,
+      updatedAt: (cfg as any).updatedAt,
+      updatedAt_ts: Number((cfg as any).updatedAt_ts) || undefined,
     }
   } catch {
     return getDefaultAdminConfig()
@@ -99,56 +116,38 @@ export async function fetchAdminConfig(): Promise<AdminConfigDoc> {
 
 export async function saveAdminConfig(patch: Partial<AdminConfigDoc>): Promise<AdminConfigDoc> {
   const admin = await requireAdmin()
-  const db = app.database()
 
-  const current = await fetchAdminConfig()
-  const next: AdminConfigDoc = {
-    _id: current._id,
-    similarity_enabled: patch.similarity_enabled !== undefined ? !!patch.similarity_enabled : current.similarity_enabled,
-    similarity_threshold: patch.similarity_threshold !== undefined ? normalizeThreshold(patch.similarity_threshold) : current.similarity_threshold,
-    similarity_rule: patch.similarity_rule !== undefined ? normalizeRule(patch.similarity_rule) : current.similarity_rule,
-    updated_by: admin.uid,
-    updatedAt: new Date(),
-    updatedAt_ts: Date.now(),
+  const token = getStoredToken()
+  if (!token) {
+    throw new Error('JWT_REQUIRED')
   }
 
-  // update singleton doc if exists
-  try {
-    const byKey: any = await db
-      .collection(COLLECTION)
-      .where({ [CONFIG_KEY_FIELD]: CONFIG_KEY_VALUE } as any)
-      .limit(1)
-      .get()
-    const doc = byKey && byKey.data && byKey.data[0]
-    if (doc && doc._id) {
-      await db.collection(COLLECTION).doc(String(doc._id)).update({
-        [CONFIG_KEY_FIELD]: CONFIG_KEY_VALUE,
-        similarity_enabled: next.similarity_enabled,
-        similarity_threshold: next.similarity_threshold,
-        similarity_rule: next.similarity_rule,
-        updated_by: next.updated_by,
-        updatedAt: next.updatedAt,
-        updatedAt_ts: next.updatedAt_ts,
-      })
-      next._id = String(doc._id)
-      return next
-    }
-  } catch {
-    // ignore
-  }
-
-  // create singleton doc
-  const r: any = await db.collection(COLLECTION).add({
-    [CONFIG_KEY_FIELD]: CONFIG_KEY_VALUE,
-    similarity_enabled: next.similarity_enabled,
-    similarity_threshold: next.similarity_threshold,
-    similarity_rule: next.similarity_rule,
-    updated_by: next.updated_by,
-    updatedAt: next.updatedAt,
-    updatedAt_ts: next.updatedAt_ts,
+  const resp: any = await requestJson({
+    url: `${API_BASE}/config/similarity`,
+    method: 'POST',
+    data: {
+      similarity_enabled: patch.similarity_enabled,
+      similarity_threshold: patch.similarity_threshold,
+      similarity_rule: patch.similarity_rule,
+    },
+    header: {
+      'x-uid': String(admin.uid || ''),
+      'x-nickname': '',
+    },
   })
 
-  const createdId = String(r && ((r as any).id || (r as any)._id) || '').trim()
-  if (createdId) next._id = createdId
-  return next
+  if (!resp || !resp.ok || !resp.config) {
+    throw new Error((resp && resp.error) || 'SAVE_ADMIN_CONFIG_FAILED')
+  }
+
+  const cfg = resp.config as any
+  return {
+    _id: String(cfg._id || '').trim() || undefined,
+    similarity_enabled: cfg.similarity_enabled !== false,
+    similarity_threshold: normalizeThreshold(cfg.similarity_threshold),
+    similarity_rule: normalizeRule(cfg.similarity_rule),
+    updated_by: cfg.updated_by || admin.uid,
+    updatedAt: cfg.updatedAt,
+    updatedAt_ts: Number(cfg.updatedAt_ts) || Date.now(),
+  }
 }

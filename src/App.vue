@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from "@dcloudio/uni-app";
-import { initCloudBase, checkEnvironment } from "./utils/cloudbase";
+import { initCloudBase } from "./utils/cloudbase";
 import { createSSRApp } from 'vue';
 import { createI18n } from 'vue-i18n';
 import zhCN from './i18n/locales/zh-CN';
@@ -34,23 +34,10 @@ onLaunch(async () => {
   // 设置语言
   const locale = uni.getStorageSync('locale') || 'zh-CN';
   i18n.global.locale.value = locale;
-  
-  // 检查云开发环境配置
-  if (checkEnvironment()) {
-    try {
-      // 初始化云开发
-      const success = await initCloudBase();
-      if (success) {
-        console.log("云开发初始化成功");
-      } else {
-        console.warn("云开发初始化失败");
-      }
-    } catch (error) {
-      console.error("云开发初始化异常:", error);
-    }
-  } else {
-    console.warn("云开发环境ID未配置，请在 src/utils/cloudbase.ts 中配置");
-  }
+
+  try {
+    await initCloudBase()
+  } catch {}
 });
 
 onShow(() => {

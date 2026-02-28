@@ -285,13 +285,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { app, ensureLogin, requireNonGuest } from '../../utils/cloudbase'
+import { ensureLogin, requireNonGuest } from '../../utils/cloudbase'
 import { ensureApiToken, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
 import { getRewardPoints } from '../../utils/points-config'
 import type { SapDemandRecord } from '../../utils/sap-demands'
 import { parseDemandText } from '../../utils/demand-parser'
 import { checkSimilarDemandsByPolicy } from '../../utils/demand-similarity'
 import { fetchAdminConfig, getDefaultAdminConfig } from '../../utils/admin-config'
+import { getSapModuleOptionsForUi, normalizeSapModuleCodes } from '../../utils/sap-modules'
 
 const form = ref({
   raw_text: '',
@@ -318,7 +319,7 @@ function getApiBase(): string {
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
     }
   } catch {
     // ignore
@@ -369,6 +370,14 @@ const showSplitPreview = ref(false) // 是否显示拆分预览
 const selectedDemands = ref<Set<number>>(new Set()) // 选中的需求索引
 const checkingSimilarity = ref(false) // 是否正在检查相似度
 const adminConfig = ref(getDefaultAdminConfig())
+
+const similarityEnabled = computed(() => {
+  return (adminConfig.value as any)?.similarity_enabled !== false
+})
+
+const similarityLookbackDays = computed(() => {
+  return 90
+})
 
 const requireNonGuestForPublish = async () => {
   if (allowLocalDevBypass) return
@@ -437,20 +446,7 @@ const similarityThreshold = computed(() => {
   return Number.isFinite(v) && v > 0 ? v : 0.85
 })
 
-const availableModules = [
-  { code: 'FICO', name: 'FICO' },
-  { code: 'MM', name: 'MM' },
-  { code: 'SD', name: 'SD' },
-  { code: 'PP', name: 'PP' },
-  { code: 'WM', name: 'WM' },
-  { code: 'EWM', name: 'EWM' },
-  { code: 'HR', name: 'HR' },
-  { code: 'SAC', name: 'SAC' },
-  { code: 'BI', name: 'BI' },
-  { code: 'BW', name: 'BW' },
-  { code: 'ABAP', name: 'ABAP' },
-  { code: 'OTHER', name: '其他' },
-]
+const availableModules = getSapModuleOptionsForUi({ includeOther: true })
 
 const remoteModes = [
   { value: undefined, label: '不限' },
@@ -526,7 +522,7 @@ const parseAndFillForm = (text: string) => {
     
     // 填充模块（如果当前没有选择模块）
     if (form.value.module_codes.length === 0 && parsed.module_codes.length > 0) {
-      form.value.module_codes = parsed.module_codes
+      form.value.module_codes = normalizeSapModuleCodes(parsed.module_codes)
     }
     
     // 填充城市（如果当前为空）
@@ -768,11 +764,11 @@ const handleAutoRecognize = async () => {
     await ensureLogin()
     const user = await getPublisherProfile()
     const cfg = adminConfig.value
-    const similarityCheck = cfg.similarity_enabled
+    const similarityCheck = similarityEnabled.value
       ? await checkSimilarDemandsByPolicy({
           rawText,
           currentUserId: user.uid,
-          days: 7,
+          days: similarityLookbackDays.value,
           threshold: cfg.similarity_threshold,
           rule: cfg.similarity_rule,
         })
@@ -782,7 +778,7 @@ const handleAutoRecognize = async () => {
       recognizeResult.value = {
         level: 'none',
         summary: '未发现相似需求',
-        detail: '范围：近 7 天'
+        detail: '范围：近 ' + similarityLookbackDays.value + ' 天'
       }
       return
     }
@@ -822,11 +818,11 @@ const checkDemandsSimilarity = async (demands: string[]) => {
         const parsed = parseDemandText(demandText)
         const inferred = inferExtraTags(demandText, parsed)
         // 检查是否有相似需求
-        const similarityCheck = cfg.similarity_enabled
+        const similarityCheck = similarityEnabled.value
           ? await checkSimilarDemandsByPolicy({
               rawText: demandText,
               currentUserId: user.uid,
-              days: 7,
+              days: similarityLookbackDays.value,
               threshold: cfg.similarity_threshold,
               rule: cfg.similarity_rule,
             })
@@ -1019,14 +1015,25 @@ const handleSubmit = async () => {
     return
   }
 
-  if (form.value.module_codes.length === 0) {
-    uni.showToast({ title: '请至少选择一个 SAP 模块', icon: 'none' })
-    return
-  }
-
   const q = validateDemandQuality(form.value.raw_text)
   if (!q.ok) {
     uni.showToast({ title: q.reason || '需求内容不符合发布要求', icon: 'none' })
+    return
+  }
+
+  // 兜底：点击“发布需求”时如果检测到多条需求，直接进入拆分预览流程
+  // 避免部分端点击按钮不触发 textarea blur，导致预览不出现
+  if (!showSplitPreview.value && hasMultipleDemands(form.value.raw_text)) {
+    const demands = splitMultiLineDemands(form.value.raw_text)
+    if (demands.length > 1) {
+      await checkDemandsSimilarity(demands)
+      return
+    }
+  }
+
+  // 单条发布才强制要求选择模块
+  if (form.value.module_codes.length === 0) {
+    uni.showToast({ title: '请至少选择一个 SAP 模块', icon: 'none' })
     return
   }
 
@@ -1044,11 +1051,11 @@ const handleSubmit = async () => {
     }
     
     const cfg = adminConfig.value
-    if (cfg.similarity_enabled) {
+    if (similarityEnabled.value) {
       const similarityCheck = await checkSimilarDemandsByPolicy({
         rawText: form.value.raw_text,
         currentUserId: user.uid,
-        days: 7,
+        days: similarityLookbackDays.value,
         threshold: cfg.similarity_threshold,
         rule: cfg.similarity_rule,
       })

@@ -64,11 +64,5 @@ export default defineConfig({
     fs: {
       deny: ['timesheet/**'],
     },
-    proxy: {
-      '/__auth': {
-        target: 'https://envId-appid.tcloudbaseapp.com/',
-        changeOrigin: true,
-      }
-    },
   }
 });

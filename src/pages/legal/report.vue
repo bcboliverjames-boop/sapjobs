@@ -75,8 +75,57 @@
 import { CONTACT_EMAIL } from '../../config/site'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { app, requireNonGuest } from '../../utils/cloudbase'
+import { requireNonGuest } from '../../utils/cloudbase'
 import { getOrCreateUserProfile } from '../../utils/user'
+
+function getApiBase(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = String(window.location && window.location.hostname)
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
+        return forced ? String(forced) : 'http://127.0.0.1:3001'
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
+  return 'https://api.sapboss.com'
+}
+
+const API_BASE = getApiBase()
+const API_TOKEN_KEY = 'sapboss_api_token'
+
+function getStoredToken(): string {
+  try {
+    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data?: any; header?: any }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const token = getStoredToken()
+    uni.request({
+      url: opts.url,
+      method: opts.method || 'GET',
+      data: opts.data,
+      header: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.header || {}),
+      },
+      success: (res) => resolve((res as any)?.data as T),
+      fail: (err) => reject(err),
+    })
+  })
+}
 
 const goToContact = () => {
   uni.navigateTo({
@@ -125,21 +174,28 @@ const submitReport = async () => {
   try {
     await requireNonGuest()
     const profile = await getOrCreateUserProfile()
-    const db = app.database()
 
-    await db.collection('ugc_reports').add({
-      category: categoryOptions[categoryIndex.value] || '其他',
-      description: desc,
-      contact: String(contact.value || '').trim(),
-      target_type: 'demand',
-      target_id: String(demandId.value || '').trim(),
-      page_url: String(pageHref.value || '').trim(),
-      reporter_user_id: String(profile.uid || '').trim(),
-      reporter_nickname: String(profile.nickname || '').trim(),
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    const resp: any = await requestJson({
+      url: `${API_BASE}/ugc_reports`,
+      method: 'POST',
+      data: {
+        category: categoryOptions[categoryIndex.value] || '其他',
+        description: desc,
+        contact: String(contact.value || '').trim(),
+        target_type: 'demand',
+        target_id: String(demandId.value || '').trim(),
+        page_url: String(pageHref.value || '').trim(),
+        reporter_nickname: String(profile.nickname || '').trim(),
+      },
+      header: {
+        'x-uid': String(profile.uid || '').trim(),
+        'x-nickname': String(profile.nickname || '').trim(),
+      },
     })
+
+    if (!resp || !resp.ok) {
+      throw new Error((resp && resp.error) || 'SUBMIT_FAILED')
+    }
 
     description.value = ''
     contact.value = ''

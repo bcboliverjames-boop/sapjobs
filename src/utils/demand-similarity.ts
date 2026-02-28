@@ -13,7 +13,7 @@ function getDemandsApiBase(): string {
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3004'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
     }
   } catch {
     // ignore
