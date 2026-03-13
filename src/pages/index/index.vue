@@ -171,7 +171,13 @@ import { computed, onMounted, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { ICP_LINK, ICP_NUMBER } from '../../config/site'
 import { ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
-import { fetchAllUniqueDemands, fetchAllUniqueDemandsByTimeRange, type SapUniqueDemandDoc } from '../../utils/sap-unique-demands'
+import {
+  fetchAllUniqueDemands,
+  fetchAllUniqueDemandsByTimeRange,
+  fetchUniqueDemandsCountByTimeRange,
+  fetchUniqueDemandsListByTimeRange,
+  type SapUniqueDemandDoc,
+} from '../../utils/sap-unique-demands'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
  
 
@@ -636,12 +642,7 @@ const loadUniqueInsights = async () => {
     const state: any = await ensureLogin()
     const user = state && state.user
     const skipCloudDb = !!isGuestUser(user)
-    if (skipCloudDb) {
-      insightsMode.value = 'demo'
-      return
-    }
-
-    insightsMode.value = 'strict'
+    insightsMode.value = skipCloudDb ? 'demo' : 'strict'
 
     const now = new Date()
     const endTs = now.getTime()
@@ -649,38 +650,57 @@ const loadUniqueInsights = async () => {
     const workStart = await getWorkingHoursWindowStart({ now, hours: 24 })
     let startTs = workStart.getTime()
 
+    if (skipCloudDb) {
+      startTs = endTs - 30 * 24 * 60 * 60 * 1000
+    }
+
     let weekStartTs = endTs - 7 * 24 * 60 * 60 * 1000
     let monthStartTs = endTs - 30 * 24 * 60 * 60 * 1000
 
+    if (skipCloudDb) {
+      weekStartTs = startTs
+      monthStartTs = startTs
+    }
+
     let allValidDocs: SapUniqueDemandDoc[] | null = null
 
-    let [todayDemandDocs, todayNewDocs, weekNewDocs, monthNewDocs] = await Promise.all([
-      fetchAllUniqueDemandsByTimeRange({
+    let [todayDemandCount, todayNewCount, weekNewCount] = await Promise.all([
+      fetchUniqueDemandsCountByTimeRange({
+        startTs,
+        endTs,
+        field: 'last_updated_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+      fetchUniqueDemandsCountByTimeRange({
+        startTs,
+        endTs,
+        field: 'created_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+      fetchUniqueDemandsCountByTimeRange({
+        startTs: weekStartTs,
+        endTs,
+        field: 'created_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+    ])
+
+    let [todayDemandDocs, todayNewDocs, monthNewDocs] = await Promise.all([
+      fetchUniqueDemandsListByTimeRange({
         startTs,
         endTs,
         field: 'last_updated_time_ts',
         onlyValid: true,
         order: 'desc',
-        pageSize: 100,
-        max: 2000,
+        limit: 200,
       }).catch(() => []),
-      fetchAllUniqueDemandsByTimeRange({
+      fetchUniqueDemandsListByTimeRange({
         startTs,
         endTs,
         field: 'created_time_ts',
         onlyValid: true,
         order: 'desc',
-        pageSize: 100,
-        max: 2000,
-      }).catch(() => []),
-      fetchAllUniqueDemandsByTimeRange({
-        startTs: weekStartTs,
-        endTs,
-        field: 'created_time_ts',
-        onlyValid: true,
-        order: 'desc',
-        pageSize: 100,
-        max: 2000,
+        limit: 60,
       }).catch(() => []),
       fetchAllUniqueDemandsByTimeRange({
         startTs: monthStartTs,
@@ -693,8 +713,10 @@ const loadUniqueInsights = async () => {
       }).catch(() => []),
     ])
 
+    const weekNewDocs: SapUniqueDemandDoc[] = []
+
     const emptyByTs =
-      todayDemandDocs.length === 0 && todayNewDocs.length === 0 && weekNewDocs.length === 0 && monthNewDocs.length === 0
+      todayDemandCount === 0 && todayNewCount === 0 && weekNewCount === 0 && monthNewDocs.length === 0
 
     if (emptyByTs) {
       const all = await fetchAllUniqueDemands({
@@ -711,44 +733,58 @@ const loadUniqueInsights = async () => {
 
       todayDemandDocs = all.filter((d) => inRange(parseTs(d.last_updated_time_ts ?? d.last_updated_time), startTs, endTs))
       todayNewDocs = all.filter((d) => inRange(parseTs(d.created_time_ts ?? d.created_time), startTs, endTs))
-      weekNewDocs = all.filter((d) => inRange(parseTs(d.created_time_ts ?? d.created_time), weekStartTs, endTs))
+      // weekNewDocs is only used for count/yoy; keep list empty in fallback
       monthNewDocs = all.filter((d) => inRange(parseTs(d.created_time_ts ?? d.created_time), monthStartTs, endTs))
     }
 
-    const strictAllZero = todayDemandDocs.length === 0 && todayNewDocs.length === 0 && weekNewDocs.length === 0
+    const strictAllZero = todayDemandCount === 0 && todayNewCount === 0 && weekNewCount === 0
     if (strictAllZero) {
       insightsMode.value = 'demo'
       startTs = endTs - 30 * 24 * 60 * 60 * 1000
       weekStartTs = startTs
       monthStartTs = startTs
 
-      ;[todayDemandDocs, todayNewDocs, weekNewDocs, monthNewDocs] = await Promise.all([
-        fetchAllUniqueDemandsByTimeRange({
+      const [demoTodayDemandCount, demoTodayNewCount, demoWeekNewCount] = await Promise.all([
+        fetchUniqueDemandsCountByTimeRange({
+          startTs,
+          endTs,
+          field: 'last_updated_time_ts',
+          onlyValid: true,
+        }).catch(() => 0),
+        fetchUniqueDemandsCountByTimeRange({
+          startTs,
+          endTs,
+          field: 'created_time_ts',
+          onlyValid: true,
+        }).catch(() => 0),
+        fetchUniqueDemandsCountByTimeRange({
+          startTs: weekStartTs,
+          endTs,
+          field: 'created_time_ts',
+          onlyValid: true,
+        }).catch(() => 0),
+      ])
+
+      todayDemandCount = demoTodayDemandCount
+      todayNewCount = demoTodayNewCount
+      weekNewCount = demoWeekNewCount
+
+      ;[todayDemandDocs, todayNewDocs, monthNewDocs] = await Promise.all([
+        fetchUniqueDemandsListByTimeRange({
           startTs,
           endTs,
           field: 'last_updated_time_ts',
           onlyValid: true,
           order: 'desc',
-          pageSize: 100,
-          max: 2000,
+          limit: 200,
         }).catch(() => []),
-        fetchAllUniqueDemandsByTimeRange({
+        fetchUniqueDemandsListByTimeRange({
           startTs,
           endTs,
           field: 'created_time_ts',
           onlyValid: true,
           order: 'desc',
-          pageSize: 100,
-          max: 2000,
-        }).catch(() => []),
-        fetchAllUniqueDemandsByTimeRange({
-          startTs: weekStartTs,
-          endTs,
-          field: 'created_time_ts',
-          onlyValid: true,
-          order: 'desc',
-          pageSize: 100,
-          max: 2000,
+          limit: 60,
         }).catch(() => []),
         fetchAllUniqueDemandsByTimeRange({
           startTs: monthStartTs,
@@ -768,69 +804,43 @@ const loadUniqueInsights = async () => {
     const prevWeekEndTs = weekStartTs
     const prevWeekStartTs = prevWeekEndTs - Math.max(1, endTs - weekStartTs)
 
-    let prevTodayDemandDocs: SapUniqueDemandDoc[] = []
-    let prevTodayNewDocs: SapUniqueDemandDoc[] = []
-    let prevWeekNewDocs: SapUniqueDemandDoc[] = []
+    const [prevTodayDemandCount, prevTodayNewCount, prevWeekNewCount] = await Promise.all([
+      fetchUniqueDemandsCountByTimeRange({
+        startTs: prevStartTs,
+        endTs: prevEndTs,
+        field: 'last_updated_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+      fetchUniqueDemandsCountByTimeRange({
+        startTs: prevStartTs,
+        endTs: prevEndTs,
+        field: 'created_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+      fetchUniqueDemandsCountByTimeRange({
+        startTs: prevWeekStartTs,
+        endTs: prevWeekEndTs,
+        field: 'created_time_ts',
+        onlyValid: true,
+      }).catch(() => 0),
+    ])
 
-    if (allValidDocs) {
-      const inRange = (t: number | null, s: number, e2: number) => t !== null && t >= s && t < e2
-      prevTodayDemandDocs = allValidDocs.filter((d) =>
-        inRange(parseTs(d.last_updated_time_ts ?? d.last_updated_time), prevStartTs, prevEndTs),
-      )
-      prevTodayNewDocs = allValidDocs.filter((d) =>
-        inRange(parseTs(d.created_time_ts ?? d.created_time), prevStartTs, prevEndTs),
-      )
-      prevWeekNewDocs = allValidDocs.filter((d) =>
-        inRange(parseTs(d.created_time_ts ?? d.created_time), prevWeekStartTs, prevWeekEndTs),
-      )
-    } else {
-      ;[prevTodayDemandDocs, prevTodayNewDocs, prevWeekNewDocs] = await Promise.all([
-        fetchAllUniqueDemandsByTimeRange({
-          startTs: prevStartTs,
-          endTs: prevEndTs,
-          field: 'last_updated_time_ts',
-          onlyValid: true,
-          order: 'desc',
-          pageSize: 100,
-          max: 2000,
-        }).catch(() => []),
-        fetchAllUniqueDemandsByTimeRange({
-          startTs: prevStartTs,
-          endTs: prevEndTs,
-          field: 'created_time_ts',
-          onlyValid: true,
-          order: 'desc',
-          pageSize: 100,
-          max: 2000,
-        }).catch(() => []),
-        fetchAllUniqueDemandsByTimeRange({
-          startTs: prevWeekStartTs,
-          endTs: prevWeekEndTs,
-          field: 'created_time_ts',
-          onlyValid: true,
-          order: 'desc',
-          pageSize: 100,
-          max: 2000,
-        }).catch(() => []),
-      ])
+    todayDemand.value = todayDemandCount
+    {
+      const prev = prevTodayDemandCount
+      todayDemandYoy.value = prev ? Math.round(((todayDemandCount - prev) / prev) * 100) : null
     }
 
-    todayDemand.value = todayDemandDocs.length
+    todayNewArrivals.value = todayNewCount
     {
-      const prev = prevTodayDemandDocs.length
-      todayDemandYoy.value = prev ? Math.round(((todayDemandDocs.length - prev) / prev) * 100) : null
+      const prev = prevTodayNewCount
+      todayNewYoy.value = prev ? Math.round(((todayNewCount - prev) / prev) * 100) : null
     }
 
-    todayNewArrivals.value = todayNewDocs.length
+    weekNewArrivals.value = weekNewCount
     {
-      const prev = prevTodayNewDocs.length
-      todayNewYoy.value = prev ? Math.round(((todayNewDocs.length - prev) / prev) * 100) : null
-    }
-
-    weekNewArrivals.value = weekNewDocs.length
-    {
-      const prev = prevWeekNewDocs.length
-      weekNewYoy.value = prev ? Math.round(((weekNewDocs.length - prev) / prev) * 100) : null
+      const prev = prevWeekNewCount
+      weekNewYoy.value = prev ? Math.round(((weekNewCount - prev) / prev) * 100) : null
     }
 
     todayModuleBars.value = buildModuleBars(todayDemandDocs)

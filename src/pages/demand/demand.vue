@@ -23,6 +23,7 @@
     <view class="search-box">
       <input
         class="search-input"
+        name="demand-search"
         v-model="searchKeyword"
         type="text"
         placeholder="搜索需求内容、模块、城市..."
@@ -178,7 +179,14 @@
     </scroll-view>
 
     <!-- 需求卡片列表（使用假数据） -->
-    <scroll-view class="card-list" scroll-y="true" :scroll-with-animation="true">
+    <scroll-view
+      class="card-list"
+      scroll-y="true"
+      :scroll-with-animation="true"
+      lower-threshold="120"
+      @scroll="handleListScroll"
+      @scrolltolower="loadMore"
+    >
       <view
         v-for="card in filteredDemands"
         :key="card.id"
@@ -335,12 +343,17 @@
 
          <!-- 相似需求提示 -->
          <view v-if="card.similarCount && card.similarCount > 0" class="similar-hint">
-           <text class="similar-hint-text">
-             📋 共有 {{ card.similarCount + 1 }} 个用户发布过相似需求
-           </text>
+           <view class="tag tag--related">
+             <text>关联需求数 {{ card.relatedCount }}</text>
+           </view>
          </view>
 
          <!-- C. 信息提供者 + 联系方式解锁占位 -->
+      </view>
+
+      <view class="list-footer" v-if="loadingMore || !hasMore">
+        <text v-if="loadingMore" class="list-footer-text">加载中...</text>
+        <text v-else class="list-footer-text">没有更多了</text>
       </view>
     </scroll-view>
   </view>
@@ -383,7 +396,7 @@ function getApiBase(): string {
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'https://api.sapboss.com'
     }
   } catch {
     // ignore
@@ -550,6 +563,10 @@ const activeCooperationMode = ref<CooperationModeOpt>('ALL')
 
 const loading = ref(true)
 const allDemands = ref<DemandCard[]>([])
+const nextOffset = ref(0)
+const loadingMore = ref(false)
+const hasMore = ref(true)
+const pageSize = 80
 const useLocalFallback = ref(false)
 const isGuest = ref(false)
 const searchKeyword = ref('')
@@ -661,32 +678,142 @@ const extractCityFromRawText = (rawText: string): string => {
 
 const toModuleLabel = (code: string): string => sapModuleCodeToLabel(code)
 
+const deriveYearsBucket = (yearsText: string): '' | '0-3' | '4-6' | '7-10' | '10+' => {
+  const s = String(yearsText || '').trim()
+  if (!s) return ''
+  if (/不限|无要求|不限年限/i.test(s)) return ''
+  const nums = s
+    .replace(/年以上/g, '+')
+    .match(/\d+(?:\.\d+)?/g)
+    ?.map((x) => Number(x))
+    .filter((n) => Number.isFinite(n))
+  if (!nums || !nums.length) return ''
+  const min = Math.min(...nums)
+  const max = Math.max(...nums)
+  if (s.includes('+') || /以上/.test(s)) {
+    if (min >= 10) return '10+'
+    if (min >= 7) return '7-10'
+    if (min >= 4) return '4-6'
+    return '0-3'
+  }
+  if (/\d+\s*[-~至到]\s*\d+/.test(s) || nums.length >= 2) {
+    if (max <= 3) return '0-3'
+    if (min >= 4 && max <= 6) return '4-6'
+    if (min >= 7 && max <= 10) return '7-10'
+    if (min >= 10) return '10+'
+    if (max <= 6) return '4-6'
+    if (max <= 10) return '7-10'
+    return '10+'
+  }
+  const n = nums[0]
+  if (n <= 3) return '0-3'
+  if (n <= 6) return '4-6'
+  if (n <= 10) return '7-10'
+  return '10+'
+}
+
+const deriveDurationBucket = (durationText: string): '' | 'SHORT' | 'MID' | 'LONG' => {
+  const s = String(durationText || '').trim()
+  if (!s) return ''
+  if (/不限|长期|长期稳定/i.test(s)) return 'LONG'
+  const nums = s
+    .match(/\d+(?:\.\d+)?/g)
+    ?.map((x) => Number(x))
+    .filter((n) => Number.isFinite(n))
+  if (!nums || !nums.length) return ''
+  const max = Math.max(...nums)
+  if (/天/.test(s)) {
+    const days = max
+    if (days <= 90) return 'SHORT'
+    if (days <= 180) return 'MID'
+    return 'LONG'
+  }
+  const months = max
+  if (months <= 3) return 'SHORT'
+  if (months <= 6) return 'MID'
+  return 'LONG'
+}
+
+const normalizeLanguageLabel = (langRaw: string): '' | '英语' | '日语' => {
+  const s = String(langRaw || '').trim()
+  if (!s) return ''
+  if (/日语|japanese|\bjp\b/i.test(s)) return '日语'
+  if (/英语|英文|english|\ben\b/i.test(s)) return '英语'
+  return ''
+}
+
+const normalizeCooperationModeLabel = (coopRaw: string, rawText: string): string => {
+  const s = String(coopRaw || '').trim()
+  const t = String(rawText || '').trim()
+  const src = `${s} ${t}`.toLowerCase()
+
+  if (!s && !t) return ''
+
+  if (/\bfree\b/.test(src) || /自由顾问/.test(src)) return 'FREE'
+  if (/甲方入职/.test(src)) return '甲方入职'
+  if (/乙方入职/.test(src)) return '乙方入职'
+  if (/入职/.test(src)) return '入职'
+  if (/兼职/.test(src) || /part[-\s]?time/.test(src)) return '兼职'
+  if (/外包/.test(src) || /vendor|outsourc/.test(src)) return '外包'
+
+  // 保留原始值（避免误归类）
+  if (s) return /^free$/i.test(s) ? 'FREE' : s
+  return ''
+}
+
 // 将云端或本地的原始记录映射到页面用的卡片类型
-const mapToCard = (item: any, index: number): DemandCard => ({
-  id: item.id || String(index),
-  raw_text: item.raw_text,
-  module_labels: item.module_labels,
-  module_codes: item.module_codes,
-  city: item.city,
-  duration_text: item.duration_text,
-  years_text: item.years_text,
-  language: item.language,
-  daily_rate: item.daily_rate,
-  is_remote: typeof item.is_remote === 'boolean' ? item.is_remote : null,
-  cooperation_mode: String(item.cooperation_mode || '').trim(),
-  years_bucket: (item.years_bucket === '0-3' || item.years_bucket === '4-6' || item.years_bucket === '7-10' || item.years_bucket === '10+') ? item.years_bucket : '',
-  duration_bucket: (item.duration_bucket === 'SHORT' || item.duration_bucket === 'MID' || item.duration_bucket === 'LONG') ? item.duration_bucket : '',
-  extra_tags: Array.isArray(item.extra_tags) ? item.extra_tags.map((x: any) => String(x || '').trim()).filter(Boolean) : [],
-  provider_name: item.provider_name,
-  createdAt: item.createdAt,
-  updatedAt: item.updatedAt,
-  relatedCount: item.relatedCount || 0,
-  similarCount: item.similarCount || 0,
-  similarDemands: item.similarDemands || [],
-  // 初始化状态和评价数据，确保始终有值（即使为0也显示）
-  statusCounts: item.statusCounts || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 },
-  reliabilityCounts: item.reliabilityCounts || { reliable: 0, unreliable: 0 },
-})
+const mapToCard = (item: any, index: number): DemandCard => {
+  const city = String(item.city || '').trim()
+  const durationText = String(item.duration_text || '').trim()
+  const yearsText = String(item.years_text || '').trim()
+  const rawText = String(item.raw_text || '').trim()
+
+  const language = normalizeLanguageLabel(String(item.language || ''))
+  const cooperation_mode = normalizeCooperationModeLabel(String(item.cooperation_mode || ''), rawText)
+
+  const isRemote = (() => {
+    if (typeof item.is_remote === 'boolean') return item.is_remote
+    if (city === '远程' || city === '在家') return true
+    if (/远程/i.test(rawText)) return true
+    return null
+  })()
+
+  const years_bucket: DemandCard['years_bucket'] =
+    item.years_bucket === '0-3' || item.years_bucket === '4-6' || item.years_bucket === '7-10' || item.years_bucket === '10+'
+      ? item.years_bucket
+      : deriveYearsBucket(yearsText)
+
+  const duration_bucket: DemandCard['duration_bucket'] =
+    item.duration_bucket === 'SHORT' || item.duration_bucket === 'MID' || item.duration_bucket === 'LONG'
+      ? item.duration_bucket
+      : deriveDurationBucket(durationText)
+
+  return {
+    id: item.id || String(index),
+    raw_text: rawText,
+    module_labels: item.module_labels,
+    module_codes: item.module_codes,
+    city,
+    duration_text: durationText,
+    years_text: yearsText,
+    language,
+    daily_rate: item.daily_rate,
+    is_remote: isRemote,
+    cooperation_mode,
+    years_bucket,
+    duration_bucket,
+    extra_tags: Array.isArray(item.extra_tags) ? item.extra_tags.map((x: any) => String(x || '').trim()).filter(Boolean) : [],
+    provider_name: item.provider_name,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    relatedCount: item.relatedCount || 0,
+    similarCount: item.similarCount || 0,
+    similarDemands: item.similarDemands || [],
+    // 初始化状态和评价数据，确保始终有值（即使为0也显示）
+    statusCounts: item.statusCounts || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 },
+    reliabilityCounts: item.reliabilityCounts || { reliable: 0, unreliable: 0 },
+  }
+}
 
 const computeRelatedCounts = async (cards: DemandCard[]) => {
   try {
@@ -699,7 +826,213 @@ const computeRelatedCounts = async (cards: DemandCard[]) => {
   }
 }
 
-const loadFromCloud = async () => {
+function buildQueryString(params: Record<string, string>): string {
+  const pairs: string[] = []
+  Object.keys(params).forEach((k) => {
+    const v = params[k]
+    if (v === undefined || v === null) return
+    pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+  })
+  return pairs.join('&')
+}
+
+const fetchUniqueDemandsPage = async (opts: {
+  offset: number
+  limit: number
+  startTs: number | null
+  endTs: number
+  field: string
+}): Promise<SapUniqueDemandDoc[]> => {
+  const base = String(API_BASE).replace(/\/+$/, '')
+  const limit = Math.max(1, Math.min(200, opts.limit))
+  const offset = Math.max(0, opts.offset)
+
+  if (opts.startTs !== null) {
+    const qs = buildQueryString({
+      startTs: String(opts.startTs),
+      endTs: String(opts.endTs),
+      field: String(opts.field),
+      order: 'desc',
+      onlyValid: '1',
+      limit: String(limit),
+      offset: String(offset),
+    })
+    const resp: any = await requestJson({
+      url: `${base}/unique_demands/range?${qs}`,
+      method: 'GET',
+    })
+    if (!resp || !resp.ok || !Array.isArray(resp.demands)) {
+      throw new Error((resp && resp.error) || 'UNIQUE_DEMANDS_RANGE_FAILED')
+    }
+    return resp.demands as SapUniqueDemandDoc[]
+  }
+
+  const qs = buildQueryString({
+    orderBy: String(opts.field),
+    order: 'desc',
+    onlyValid: '1',
+    limit: String(limit),
+    offset: String(offset),
+  })
+  const resp: any = await requestJson({
+    url: `${base}/unique_demands/all?${qs}`,
+    method: 'GET',
+  })
+  if (!resp || !resp.ok || !Array.isArray(resp.demands)) {
+    throw new Error((resp && resp.error) || 'UNIQUE_DEMANDS_ALL_FAILED')
+  }
+  return resp.demands as SapUniqueDemandDoc[]
+}
+
+const enrichCards = async (cards: DemandCard[]) => {
+  const demandIds = cards.map((d) => d.id).filter(Boolean) as string[]
+  const statusCountsMap = new Map<string, any>()
+  const reliabilityCountsMap = new Map<string, any>()
+
+  const statusCountsCache: Map<string, any> = (enrichCards as any)._statusCountsCache || new Map()
+  const reliabilityCountsCache: Map<string, any> = (enrichCards as any)._reliabilityCountsCache || new Map()
+  ;(enrichCards as any)._statusCountsCache = statusCountsCache
+  ;(enrichCards as any)._reliabilityCountsCache = reliabilityCountsCache
+
+  const runInBatches = async (ids: string[], batchSize: number, worker: (id: string) => Promise<void>) => {
+    const size = Math.max(1, Math.min(30, batchSize))
+    for (let i = 0; i < ids.length; i += size) {
+      const chunk = ids.slice(i, i + size)
+      await Promise.all(chunk.map((id) => worker(id)))
+    }
+  }
+
+  if (demandIds.length > 0) {
+    demandIds.forEach((id) => {
+      if (statusCountsCache.has(id)) statusCountsMap.set(id, statusCountsCache.get(id))
+      if (reliabilityCountsCache.has(id)) reliabilityCountsMap.set(id, reliabilityCountsCache.get(id))
+    })
+
+    const missingIds = demandIds.filter((id) => !statusCountsMap.has(id) || !reliabilityCountsMap.has(id))
+    // 不阻塞首屏渲染：后台补齐 counts，且做并发限流（避免 2N 个请求同时起飞）
+    runInBatches(missingIds, 8, async (id) => {
+      try {
+        const [statusCounts, reliabilityCounts] = await Promise.all([
+          getDemandStatusCounts(id),
+          getDemandReliabilityCounts(id),
+        ])
+        statusCountsCache.set(id, statusCounts)
+        reliabilityCountsCache.set(id, reliabilityCounts)
+        statusCountsMap.set(id, statusCounts)
+        reliabilityCountsMap.set(id, reliabilityCounts)
+
+        const card = cards.find((c) => c.id === id)
+        if (card) {
+          card.statusCounts = statusCounts
+          card.reliabilityCounts = reliabilityCounts
+        }
+      } catch (e) {
+        console.error(`Failed to load status/reliability for demand ${id}:`, e)
+        const emptyStatus = { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+        const emptyRel = { reliable: 0, unreliable: 0 }
+        statusCountsCache.set(id, emptyStatus)
+        reliabilityCountsCache.set(id, emptyRel)
+        statusCountsMap.set(id, emptyStatus)
+        reliabilityCountsMap.set(id, emptyRel)
+      }
+    }).catch(() => {})
+  }
+
+  let authUid = ''
+  try {
+    const state: any = await ensureLogin()
+    const u = state && state.user
+    if (u && !isGuestUser(u)) {
+      authUid = String((u as any).uid || '').trim()
+    }
+  } catch {}
+
+  if (authUid) {
+    await Promise.all(
+      cards.map(async (card) => {
+        card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+        card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
+        try {
+          const [userStatuses, userReliability] = await Promise.all([
+            getUserDemandStatuses(card.id, authUid),
+            getUserDemandReliability(card.id, authUid),
+          ])
+          card.userStatuses = userStatuses || []
+          card.userReliability = userReliability
+        } catch (e) {
+          console.error(`Failed to load user status/reliability for demand ${card.id}:`, e)
+          card.userStatuses = []
+          card.userReliability = null
+        }
+      })
+    )
+  } else {
+    cards.forEach((card) => {
+      card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+      card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
+      card.userStatuses = []
+      card.userReliability = null
+    })
+  }
+
+  let favoriteSet = new Set<string>()
+  if (authUid && demandIds.length > 0) {
+    favoriteSet = await checkFavoritesStatus(demandIds)
+  }
+  cards.forEach((card) => {
+    card.isFavorited = favoriteSet.has(card.id)
+    card.favoriting = false
+  })
+
+  await computeRelatedCounts(cards)
+}
+
+const loadCommentsForDemandIds = async (ids: string[]) => {
+  try {
+    await ensureLogin()
+    const uniq = Array.from(new Set(ids.map((x) => String(x || '').trim()).filter(Boolean)))
+    if (!uniq.length) return
+
+    const base = String(API_BASE).replace(/\/+$/, '')
+    const resp: any = await requestJson({
+      url: `${base}/demand_comments`,
+      method: 'POST',
+      data: {
+        demandIds: uniq,
+        limit: 200,
+      },
+    })
+
+    const rows: any[] = resp && resp.ok && Array.isArray(resp.comments) ? resp.comments : []
+    const nextMap = { ...(commentsByDemand.value || {}) } as any
+
+    uniq.forEach((id) => {
+      nextMap[id] = []
+    })
+
+    ;(rows || []).forEach((doc: any) => {
+      const dId = doc.demand_id
+      if (!dId) return
+      if (!nextMap[dId]) nextMap[dId] = []
+      if (nextMap[dId].length < 10) {
+        nextMap[dId].push({
+          _id: doc._id,
+          demand_id: dId,
+          content: doc.content,
+          likes: doc.likes || 0,
+          dislikes: doc.dislikes || 0,
+          createdAtText: doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('zh-CN') : '',
+        })
+      }
+    })
+
+    commentsByDemand.value = nextMap
+  } catch (e) {
+    console.error('Failed to load demand comments:', e)
+  }
+}
+
+const loadFromCloud = async (opts?: { append?: boolean }) => {
   try {
     await ensureLogin()
 
@@ -714,24 +1047,14 @@ const loadFromCloud = async () => {
 
     const field = activeTimeField.value === 'UPDATED' ? 'last_updated_time_ts' : 'created_time_ts'
 
-    let docs: SapUniqueDemandDoc[] = []
-    if (startTs !== null) {
-      docs = await fetchAllUniqueDemandsByTimeRange({
-        startTs,
-        endTs,
-        field: field as any,
-        onlyValid: true,
-        order: 'desc',
-        max: 2000,
-      })
-    } else {
-      docs = await fetchAllUniqueDemands({
-        onlyValid: true,
-        orderBy: field,
-        order: 'desc',
-        max: 2000,
-      })
-    }
+    const offset = opts?.append ? nextOffset.value : 0
+    const docs = await fetchUniqueDemandsPage({
+      offset,
+      limit: pageSize,
+      startTs,
+      endTs,
+      field,
+    })
 
     const cards = (docs || []).map((d, idx) => {
       const rawText = String(d.raw_text || '').trim()
@@ -815,8 +1138,12 @@ const loadFromCloud = async () => {
           daily_rate: dailyRateFromAttrs || parsed.daily_rate || '',
           is_remote: typeof isRemoteFromAttrs === 'boolean' ? isRemoteFromAttrs : null,
           cooperation_mode: cooperationModeFromAttrs,
-          years_bucket: (yearsBucketFromAttrs === '0-3' || yearsBucketFromAttrs === '4-6' || yearsBucketFromAttrs === '7-10' || yearsBucketFromAttrs === '10+') ? (yearsBucketFromAttrs as any) : '',
-          duration_bucket: (durationBucketFromAttrs === 'SHORT' || durationBucketFromAttrs === 'MID' || durationBucketFromAttrs === 'LONG') ? (durationBucketFromAttrs as any) : '',
+          years_bucket: (yearsBucketFromAttrs === '0-3' || yearsBucketFromAttrs === '4-6' || yearsBucketFromAttrs === '7-10' || yearsBucketFromAttrs === '10+')
+            ? (yearsBucketFromAttrs as any)
+            : deriveYearsBucket(yearsFromAttrs || parsed.years_text || ''),
+          duration_bucket: (durationBucketFromAttrs === 'SHORT' || durationBucketFromAttrs === 'MID' || durationBucketFromAttrs === 'LONG')
+            ? (durationBucketFromAttrs as any)
+            : deriveDurationBucket(durationFromAttrs || parsed.duration_text || ''),
           extra_tags: extraTags,
           provider_name: (d as any).publisher_name || '未知',
           createdAt,
@@ -824,75 +1151,23 @@ const loadFromCloud = async () => {
           similarCount: 0,
           similarDemands: [],
         },
-        idx
+        offset + idx
       )
     })
 
-    const demandIds = cards.map((d) => d.id).filter(Boolean) as string[]
-    const statusCountsMap = new Map<string, any>()
-    const reliabilityCountsMap = new Map<string, any>()
+    await enrichCards(cards)
 
-    if (demandIds.length > 0) {
-      await Promise.all(
-        demandIds.map(async (id) => {
-          try {
-            const [statusCounts, reliabilityCounts] = await Promise.all([
-              getDemandStatusCounts(id),
-              getDemandReliabilityCounts(id),
-            ])
-            statusCountsMap.set(id, statusCounts)
-            reliabilityCountsMap.set(id, reliabilityCounts)
-          } catch (e) {
-            console.error(`Failed to load status/reliability for demand ${id}:`, e)
-            statusCountsMap.set(id, { applied: 0, interviewed: 0, onboarded: 0, closed: 0 })
-            reliabilityCountsMap.set(id, { reliable: 0, unreliable: 0 })
-          }
-        })
-      )
-    }
-
-    const user = await getOrCreateUserProfile().catch(() => null)
-    if (user) {
-      await Promise.all(
-        cards.map(async (card) => {
-          card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-          card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
-          try {
-            const [userStatuses, userReliability] = await Promise.all([
-              getUserDemandStatuses(card.id, user.uid),
-              getUserDemandReliability(card.id, user.uid),
-            ])
-            card.userStatuses = userStatuses || []
-            card.userReliability = userReliability
-          } catch (e) {
-            console.error(`Failed to load user status/reliability for demand ${card.id}:`, e)
-            card.userStatuses = []
-            card.userReliability = null
-          }
-        })
-      )
+    if (opts?.append) {
+      const existing = allDemands.value || []
+      allDemands.value = [...existing, ...cards]
     } else {
-      cards.forEach((card) => {
-        card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-        card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
-        card.userStatuses = []
-        card.userReliability = null
-      })
+      allDemands.value = cards
+      commentsByDemand.value = {}
     }
 
-    let favoriteSet = new Set<string>()
-    if (user && demandIds.length > 0) {
-      favoriteSet = await checkFavoritesStatus(demandIds)
-    }
-    cards.forEach((card) => {
-      card.isFavorited = favoriteSet.has(card.id)
-      card.favoriting = false
-    })
-
-    await computeRelatedCounts(cards)
-
-    allDemands.value = cards
-    await loadCommentsForDemands()
+    nextOffset.value = offset + cards.length
+    hasMore.value = cards.length >= pageSize
+    await loadCommentsForDemandIds(cards.map((d) => d.id))
     loading.value = false
     useLocalFallback.value = false
     return
@@ -906,6 +1181,51 @@ const loadFromCloud = async () => {
   }
 }
 
+const reloadFromCloud = async () => {
+  loading.value = true
+  nextOffset.value = 0
+  hasMore.value = true
+  loadingMore.value = false
+  await loadFromCloud({ append: false })
+}
+
+const loadMore = async () => {
+  if (loading.value) return
+  if (!hasMore.value) return
+  if (loadingMore.value) return
+  loadingMore.value = true
+  try {
+    await loadFromCloud({ append: true })
+  } catch {
+    // ignore
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+const lastNearBottomTriggerAt = ref(0)
+
+const handleListScroll = (e: any) => {
+  // H5 下 scrolltolower 在部分情况下不触发，这里做兜底：接近底部时主动触发 loadMore
+  if (!hasMore.value) return
+  if (loading.value || loadingMore.value) return
+
+  const detail = (e && (e.detail || e.target)) || {}
+  const scrollTop = Number(detail.scrollTop || 0)
+  const scrollHeight = Number(detail.scrollHeight || 0)
+  const clientHeight = Number(detail.clientHeight || detail.offsetHeight || 0)
+
+  if (!scrollHeight || !clientHeight) return
+
+  const nearBottom = scrollTop + clientHeight >= scrollHeight - 200
+  if (!nearBottom) return
+
+  const now = Date.now()
+  if (now - lastNearBottomTriggerAt.value < 1200) return
+  lastNearBottomTriggerAt.value = now
+  loadMore()
+}
+
 const loadCommentsForDemands = async () => {
   try {
     await ensureLogin()
@@ -914,8 +1234,12 @@ const loadCommentsForDemands = async () => {
 
     const base = String(API_BASE).replace(/\/+$/, '')
     const resp: any = await requestJson({
-      url: `${base}/demand_comments?demandIds=${encodeURIComponent(ids.join(','))}&limit=200`,
-      method: 'GET',
+      url: `${base}/demand_comments`,
+      method: 'POST',
+      data: {
+        demandIds: ids,
+        limit: 200,
+      },
     })
 
     const rows: any[] = resp && resp.ok && Array.isArray(resp.comments) ? resp.comments : []
@@ -958,7 +1282,7 @@ const loadCommentsForDemands = async () => {
 }
 
 onMounted(() => {
-  loadFromCloud()
+  reloadFromCloud()
 
   // 监听详情页收藏变更，返回广场时立即同步心形状态
   uni.$on('favoriteChanged', (payload: any) => {
@@ -986,7 +1310,7 @@ const refreshAuthState = async () => {
 
     // When switching from guest -> logged-in, refresh list so favorites/status become interactive.
     if (prevGuest && !nextGuest) {
-      await loadFromCloud()
+      await reloadFromCloud()
     }
   } catch {
     isGuest.value = false
@@ -999,7 +1323,7 @@ onShow(async () => {
   await refreshAuthState()
   // 如果已经有数据，刷新列表（避免首次加载时重复加载）
   if (allDemands.value.length > 0 || !loading.value) {
-    loadFromCloud()
+    loadFromCloud({ append: false })
   }
 })
 
@@ -1035,6 +1359,11 @@ const refreshTimeWindow = async () => {
 
 watch(activeTimeRange, () => {
   refreshTimeWindow()
+  reloadFromCloud()
+})
+
+watch(activeTimeField, () => {
+  reloadFromCloud()
 })
 
 onMounted(async () => {
@@ -1107,13 +1436,40 @@ const filteredDemands = computed(() => {
       activeTimeRange.value === 'ALL' ||
       (ts !== null && startTs !== null && ts >= startTs && ts <= nowTs)
 
-    const byCity =
-      activeCity.value === '全部' || d.city === activeCity.value
+    const normalizeCityToken = (raw: string): string => {
+      const s = String(raw || '').trim()
+      if (!s) return ''
+      return s.replace(/(市|地区|自治州|自治县|县|区|省)$/g, '').trim()
+    }
+
+    const isOverseasCity = (raw: string): boolean => {
+      const s = String(raw || '').trim()
+      if (!s) return false
+      if (s === '海外') return true
+      if (s === '欧洲' || s === '菲律宾') return true
+      if (/新加坡|马来西亚|日本|韩国|泰国|越南|印度尼西亚|印尼|印度|澳大利亚|英国|德国|法国|荷兰|瑞士|西班牙|意大利|瑞典|挪威|芬兰|丹麦|俄罗斯|美国|加拿大|墨西哥|巴西/.test(s)) return true
+      if (/\b(singapore|malaysia|japan|korea|thailand|vietnam|indonesia|india|australia|uk|england|germany|france|netherlands|switzerland|spain|italy|sweden|norway|finland|denmark|russia|usa|united states|canada|mexico|brazil)\b/i.test(s)) return true
+      return false
+    }
+
+    const byCity = (() => {
+      const active = String(activeCity.value || '').trim()
+      if (active === '全部' || active === '全国') return true
+      if (active === '远程') return d.is_remote === true
+      if (active === '海外') {
+        return isOverseasCity(String(d.city || ''))
+      }
+      const a = normalizeCityToken(active)
+      const c = normalizeCityToken(String(d.city || ''))
+      if (!a) return true
+      if (!c) return false
+      return c === a
+    })()
 
     const byRemote =
       activeRemoteMode.value === 'ALL' ||
       (activeRemoteMode.value === 'REMOTE' && d.is_remote === true) ||
-      (activeRemoteMode.value === 'ONSITE' && d.is_remote === false)
+      (activeRemoteMode.value === 'ONSITE' && (d.is_remote === false || d.is_remote === null))
 
     const byYears =
       activeYearRange.value === 'ALL' ||
@@ -1843,9 +2199,21 @@ const handleRefreshTags = async () => {
 
 .card-list {
   flex: 1;
+  height: 0;
   margin-top: 20rpx;
   position: relative;
   z-index: 0;
+}
+
+.list-footer {
+  padding: 14rpx 0 6rpx;
+  display: flex;
+  justify-content: center;
+}
+
+.list-footer-text {
+  font-size: 22rpx;
+  color: rgba(235, 241, 247, 0.55);
 }
 
 .demand-card {

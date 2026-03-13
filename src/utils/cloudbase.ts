@@ -21,15 +21,36 @@ function isH5Runtime() {
 
 function safeReadStorage(key: string): string {
   try {
-    return String(uni.getStorageSync(key) || '').trim()
-  } catch {
-    return ''
-  }
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.getStorageSync === 'function') {
+      return String(u.getStorageSync(key) || '').trim()
+    }
+  } catch {}
+
+  try {
+    if (isH5Runtime() && typeof window !== 'undefined' && (window as any).localStorage) {
+      return String((window as any).localStorage.getItem(key) || '').trim()
+    }
+  } catch {}
+
+  return ''
 }
 
 function safeWriteStorage(key: string, val: string) {
+  const v = String(val || '')
+
   try {
-    uni.setStorageSync(key, String(val || ''))
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.setStorageSync === 'function') {
+      u.setStorageSync(key, v)
+      return
+    }
+  } catch {}
+
+  try {
+    if (isH5Runtime() && typeof window !== 'undefined' && (window as any).localStorage) {
+      ;(window as any).localStorage.setItem(key, v)
+    }
   } catch {}
 }
 
@@ -66,20 +87,10 @@ function getUidFromJwt(token: string): string {
 }
 
 function getOrCreateGuestUser() {
-  const read = () => {
-    try {
-      return String(uni.getStorageSync(GUEST_UID_KEY) || '').trim()
-    } catch {
-      return ''
-    }
-  }
-
-  let uid = read()
+  let uid = safeReadStorage(GUEST_UID_KEY)
   if (!uid) {
     uid = `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
-    try {
-      uni.setStorageSync(GUEST_UID_KEY, uid)
-    } catch {}
+    safeWriteStorage(GUEST_UID_KEY, uid)
   }
 
   return {

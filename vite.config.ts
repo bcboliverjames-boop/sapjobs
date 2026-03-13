@@ -55,7 +55,7 @@ const servePublicTimesheet = () => {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [servePublicTimesheet(), uni()],
-  base: './',
+  base: '/',
   // optimizeDeps: {
   //   exclude: ['@cloudbase/adapter-uni-app'],  // 排除 @cloudbase/adapter-uni-app 依赖
   // },

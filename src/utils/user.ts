@@ -32,8 +32,8 @@ function getApiBase(): string {
         const forced =
           (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
         const forcedTrim = String(forced || '').trim()
-        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forcedTrim)) return forcedTrim
-        return 'http://127.0.0.1:3001'
+        if (forcedTrim) return forcedTrim
+        return 'https://api.sapboss.com'
       }
     }
   } catch {}
@@ -50,6 +50,40 @@ const API_TOKEN_KEY = 'sapboss_api_token'
 const API_UID_KEY = 'sapboss_api_uid'
 const LAST_LOGIN_IDENTIFIER_KEY = 'sapboss_last_login_identifier'
 const LAST_LOGIN_IDENTIFIER_TYPE_KEY = 'sapboss_last_login_identifier_type'
+
+function safeReadStorage(key: string): string {
+  try {
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.getStorageSync === 'function') {
+      return String(u.getStorageSync(key) || '').trim()
+    }
+  } catch {}
+
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      return String((window as any).localStorage.getItem(key) || '').trim()
+    }
+  } catch {}
+
+  return ''
+}
+
+function safeWriteStorage(key: string, val: string) {
+  const v = String(val || '')
+  try {
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.setStorageSync === 'function') {
+      u.setStorageSync(key, v)
+      return
+    }
+  } catch {}
+
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      ;(window as any).localStorage.setItem(key, v)
+    }
+  } catch {}
+}
 
 function detectIdentifierTypeClient(raw: string): { type: string; norm: string } {
   const s = String(raw || '').trim()
@@ -71,16 +105,14 @@ function detectIdentifierTypeClient(raw: string): { type: string; norm: string }
 function persistLastLoginIdentifier(identifier: string) {
   const { type, norm } = detectIdentifierTypeClient(identifier)
   if (!type || !norm) return
-  try {
-    uni.setStorageSync(LAST_LOGIN_IDENTIFIER_KEY, norm)
-    uni.setStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY, type)
-  } catch {}
+  safeWriteStorage(LAST_LOGIN_IDENTIFIER_KEY, norm)
+  safeWriteStorage(LAST_LOGIN_IDENTIFIER_TYPE_KEY, type)
 }
 
 export function getLastLoginIdentifier(): { type: string; value: string } | null {
   try {
-    const value = String(uni.getStorageSync(LAST_LOGIN_IDENTIFIER_KEY) || '').trim()
-    const type = String(uni.getStorageSync(LAST_LOGIN_IDENTIFIER_TYPE_KEY) || '').trim()
+    const value = safeReadStorage(LAST_LOGIN_IDENTIFIER_KEY)
+    const type = safeReadStorage(LAST_LOGIN_IDENTIFIER_TYPE_KEY)
     if (value && type) return { type, value }
     if (value) {
       const detected = detectIdentifierTypeClient(value)
@@ -97,7 +129,7 @@ function clearApiTokenCache() {
   } catch {}
 
   try {
-    uni.setStorageSync(API_TOKEN_KEY, '')
+    safeWriteStorage(API_TOKEN_KEY, '')
   } catch {}
 }
 
@@ -112,7 +144,7 @@ function requestJson<T = any>(opts: {
   return new Promise((resolve, reject) => {
     const storedToken = (() => {
       try {
-        return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+        return safeReadStorage(API_TOKEN_KEY)
       } catch {
         return ''
       }
@@ -164,7 +196,7 @@ function requestJson<T = any>(opts: {
 
 export async function ensureApiToken(): Promise<string> {
   try {
-    const existed = String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
+    const existed = safeReadStorage(API_TOKEN_KEY)
     if (existed) return existed
   } catch {}
 
@@ -190,8 +222,8 @@ export async function loginWithPassword(identifier: string, password: string): P
   }
 
   try {
-    uni.setStorageSync(API_TOKEN_KEY, token)
-    uni.setStorageSync(API_UID_KEY, uid)
+    safeWriteStorage(API_TOKEN_KEY, token)
+    safeWriteStorage(API_UID_KEY, uid)
   } catch {}
 
   persistLastLoginIdentifier(identifier)
@@ -224,8 +256,8 @@ export async function registerWithPassword(
   }
 
   try {
-    uni.setStorageSync(API_TOKEN_KEY, token)
-    uni.setStorageSync(API_UID_KEY, uid)
+    safeWriteStorage(API_TOKEN_KEY, token)
+    safeWriteStorage(API_UID_KEY, uid)
   } catch {}
 
   persistLastLoginIdentifier(identifier)

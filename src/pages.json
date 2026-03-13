@@ -145,6 +145,14 @@
       }
     },
     {
+      "path": "pages/legal/delete",
+      "style": {
+        "navigationBarTitleText": "注销与删除申请",
+        "navigationBarBackgroundColor": "#0b1924",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
       "path": "pages/admin/index",
       "style": {
         "navigationBarTitleText": "后台管理",

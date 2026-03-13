@@ -1086,9 +1086,14 @@ function sanitizeDemandPayload(input, fallbackAuth) {
   const now = new Date()
   const rawText = String((input && (input.raw_text || input.rawText || input.message_text || input.text)) || '').trim()
   const moduleCodesRaw = input && (input.module_codes || input.modules)
-  const module_codes = Array.isArray(moduleCodesRaw)
+  let module_codes = Array.isArray(moduleCodesRaw)
     ? moduleCodesRaw.map((x) => String(x || '').trim()).filter(Boolean)
     : []
+
+  const inferred = rawText ? parseDemandFromRawText(rawText) : null
+  if (!module_codes.length && inferred && Array.isArray(inferred.module_codes) && inferred.module_codes.length) {
+    module_codes = inferred.module_codes
+  }
 
   const provider_user_id = String((input && (input.provider_user_id || input.provider_id || input.uid)) || '').trim()
   const provider_name = String((input && (input.provider_name || input.publisher_name || input.nickname)) || '').trim()
@@ -1097,6 +1102,19 @@ function sanitizeDemandPayload(input, fallbackAuth) {
     ...input,
     raw_text: rawText,
     module_codes,
+    city: (input && input.city) || (inferred && inferred.city) || '',
+    is_remote:
+      typeof (input && input.is_remote) === 'boolean'
+        ? input.is_remote
+        : inferred && Object.prototype.hasOwnProperty.call(inferred, 'is_remote')
+          ? inferred.is_remote
+          : null,
+    duration_text: (input && (input.duration_text || input.durationText)) || (inferred && inferred.duration_text) || '',
+    years_text: (input && (input.years_text || input.yearsText)) || (inferred && inferred.years_text) || '',
+    language_tag: (input && (input.language_tag || input.language)) || (inferred && inferred.language_tag) || '',
+    daily_rate: (input && (input.daily_rate || input.dailyRate)) || (inferred && inferred.daily_rate) || '',
+    consultant_level: (input && (input.consultant_level || input.consultantLevel)) || (inferred && inferred.consultant_level) || '',
+    cooperation_mode: (input && (input.cooperation_mode || input.cooperationMode)) || (inferred && inferred.cooperation_mode) || '',
     provider_user_id: provider_user_id || (fallbackAuth && fallbackAuth.uid) || 'local_ingest',
     provider_name: provider_name || (fallbackAuth && fallbackAuth.nickname) || '未知',
     updatedAt: now,
@@ -3259,6 +3277,12 @@ async function handleDemandIngestPg(req, res) {
     const rawDocId = pickDocIdLike(body.raw_id || body.doc_id || (demandObj && (demandObj._id || demandObj.id || demandObj.doc_id)))
 
     if (docId && String(docId).startsWith('raw_ud_')) {
+      const rawText = String((demandObj && demandObj.raw_text) || '')
+      const newlineCount = (rawText.match(/\n/g) || []).length
+      if (rawText.length > 500 || newlineCount >= 3) {
+        res.status(422).json({ ok: false, error: 'RAW_TEXT_BLOCKY' })
+        return
+      }
       const row = await upsertUniqueDemand(docId, demandObj)
       res.json({ ok: true, raw_id: rawDocId || '', unique: mapUniqueDemandRow(row) })
       return
@@ -3268,6 +3292,15 @@ async function handleDemandIngestPg(req, res) {
     if (!payload.raw_text) {
       res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
       return
+    }
+
+    {
+      const rawText = String(payload.raw_text || '')
+      const newlineCount = (rawText.match(/\n/g) || []).length
+      if (rawText.length > 500 || newlineCount >= 3) {
+        res.status(422).json({ ok: false, error: 'RAW_TEXT_BLOCKY' })
+        return
+      }
     }
 
     if (auth.ingestMode === 'user') {
@@ -4141,6 +4174,59 @@ app.get('/demand_comments', async (req, res) => {
     })
   } catch (e) {
     console.error('demand_comments_list_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/demand_comments', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  try {
+    await ensureUgcTables()
+
+    const body = (req && req.body) || {}
+    const demandIds = body.demandIds || body.demand_ids || body.ids
+
+    let ids = []
+    if (Array.isArray(demandIds)) {
+      ids = demandIds.map((x) => String(x || '').trim()).filter(Boolean)
+    } else {
+      const rawIds = String(demandIds || '').trim()
+      ids = rawIds
+        .split(',')
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+    }
+
+    ids = ids.slice(0, 300)
+    if (!ids.length) {
+      res.status(400).json({ ok: false, error: 'DEMAND_IDS_REQUIRED' })
+      return
+    }
+
+    const limit = Math.max(1, Math.min(500, Number(body.limit || 200)))
+    const r = await pool.query(
+      'SELECT * FROM sap_demand_comments WHERE demand_id = ANY($1::text[]) ORDER BY likes DESC, created_at DESC LIMIT $2',
+      [ids, limit],
+    )
+
+    res.json({
+      ok: true,
+      comments: (r.rows || []).map((x) => ({
+        _id: String(x.id),
+        demand_id: x.demand_id,
+        content: x.content,
+        likes: Number(x.likes || 0),
+        dislikes: Number(x.dislikes || 0),
+        nickname: x.nickname || '',
+        user_id: x.user_id || '',
+        createdAt: x.created_at,
+      })),
+    })
+  } catch (e) {
+    console.error('demand_comments_post_failed', e)
     res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
   }
 })

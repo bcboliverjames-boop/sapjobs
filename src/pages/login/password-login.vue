@@ -53,8 +53,6 @@
       
       <!-- 快捷链接 -->
       <view class="quick-links">
-        <navigator url="/pages/login/phone-login" class="link-text">手机验证码登录</navigator>
-        <navigator url="/pages/login/email-login" class="link-text">邮箱验证码登录</navigator>
         <navigator url="/pages/login/register" class="link-text">注册</navigator>
       </view>
     </view>
@@ -97,6 +95,7 @@ const showPassword = ref(false)
 const loading = ref(false)
 const loadingText = ref('')
 const usernameType = ref('')
+const redirectUrl = ref('')
 
 onLoad((query: any) => {
   try {
@@ -105,6 +104,16 @@ onLoad((query: any) => {
     if (!next) return
     username.value = decodeURIComponent(next)
     onUsernameInput()
+  } catch {
+    // ignore
+  }
+
+  try {
+    const r = query && (query.redirect || query.r)
+    const url = String(r || '').trim()
+    if (url) {
+      redirectUrl.value = decodeURIComponent(url)
+    }
   } catch {
     // ignore
   }
@@ -189,9 +198,18 @@ const handleLogin = async () => {
       icon: 'success'
     })
     
-    // 延迟跳转到首页
+    // 延迟跳转到需求广场（或指定回跳地址）
     setTimeout(() => {
-      goBackOrHome()
+      const target = String(redirectUrl.value || '').trim() || '/pages/demand/demand'
+      try {
+        uni.reLaunch({ url: target })
+      } catch {
+        try {
+          uni.redirectTo({ url: target })
+        } catch {
+          goBackOrHome()
+        }
+      }
     }, 1500)
     
   } catch (error: any) {
@@ -216,14 +234,6 @@ const handleLogin = async () => {
   } finally {
     loading.value = false
   }
-}
-
-const goToPhoneLogin = () => {
-  uni.navigateTo({ url: '/pages/login/phone-login' })
-}
-
-const goToEmailLogin = () => {
-  uni.navigateTo({ url: '/pages/login/email-login' })
 }
 
 const goToRegister = () => {
@@ -400,7 +410,7 @@ const goToRegister = () => {
 
 .quick-links {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   margin-top: 40rpx;
   position: relative;
   z-index: 2;

@@ -261,7 +261,7 @@
             </text>
             <button 
               class="submit-btn split-submit-btn" 
-              @click="handleBatchSubmit" 
+              @tap="handleBatchSubmit" 
               :disabled="submitting || selectedDemands.size === 0"
             >
               {{ submitting ? '发布中...' : `批量发布 ${selectedDemands.size} 条需求` }}
@@ -269,7 +269,7 @@
           </view>
         </view>
 
-        <button v-else class="submit-btn" @click="handleSubmit" :disabled="submitting">
+        <button v-else class="submit-btn" @tap="handleSubmit" :disabled="submitting">
           {{ submitting ? '发布中...' : '发布需求' }}
         </button>
 
@@ -312,18 +312,24 @@ const form = ref({
 const parsing = ref(false)
 const submitting = ref(false)
 function getApiBase(): string {
-  const fromEnv =
-    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
-  if (fromEnv) return String(fromEnv)
-
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+        const forced =
+          (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+        const forcedTrim = String(forced || '').trim()
+        if (forcedTrim) return forcedTrim
+        return 'https://api.sapboss.com'
+      }
     }
   } catch {
     // ignore
   }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
 
   return 'https://api.sapboss.com'
 }

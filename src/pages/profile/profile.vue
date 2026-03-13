@@ -131,7 +131,7 @@
             </button>
           </view>
 
-          <view class="section">
+          <view v-if="activeTab === 'profile'" class="section">
             <text class="section-title">合规与申诉</text>
             <button class="primary-btn" @click="goToAccountDelete" style="margin-top: 14rpx;">
               账号注销 / 个人信息删除申请
@@ -227,7 +227,8 @@ function getApiBase(): string {
           (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
         const forcedTrim = String(forced || '').trim()
         if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forcedTrim)) return forcedTrim
-        return 'http://127.0.0.1:3001'
+        if (forcedTrim) return forcedTrim
+        return 'https://api.sapboss.com'
       }
     }
   } catch {
@@ -247,10 +248,19 @@ const API_TOKEN_KEY = 'sapboss_api_token'
 
 function getStoredToken(): string {
   try {
-    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
-  } catch {
-    return ''
-  }
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.getStorageSync === 'function') {
+      return String(u.getStorageSync(API_TOKEN_KEY) || '').trim()
+    }
+  } catch {}
+
+  try {
+    if (isH5Runtime() && typeof window !== 'undefined' && (window as any).localStorage) {
+      return String((window as any).localStorage.getItem(API_TOKEN_KEY) || '').trim()
+    }
+  } catch {}
+
+  return ''
 }
 
 const userInfo = ref<any>(null)

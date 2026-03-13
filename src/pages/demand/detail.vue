@@ -351,8 +351,11 @@ const lookupUniqueIdByRawId = async (rawId: string): Promise<string> => {
         if (typeof window !== 'undefined') {
           const host = String(window.location && window.location.hostname)
           if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-            const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
-            return forced ? String(forced) : 'http://127.0.0.1:3001'
+            const forced =
+              (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+            const forcedTrim = String(forced || '').trim()
+            if (forcedTrim) return forcedTrim
+            return 'https://api.sapboss.com'
           }
         }
       } catch {}

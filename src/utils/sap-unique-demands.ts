@@ -33,7 +33,7 @@ function getUniqueApiBase(): string {
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
-      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'http://127.0.0.1:3001'
+      if (/^(localhost|127\.0\.0\.1)$/i.test(host)) return 'https://api.sapboss.com'
     }
   } catch {}
 
@@ -104,7 +104,7 @@ export async function fetchUniqueDemandsCountByTimeRange(opts: {
 export async function fetchUniqueDemandsListByTimeRange(opts: {
   startTs: number
   endTs: number
-  field?: 'message_time_ts' | 'created_time_ts'
+  field?: 'message_time_ts' | 'created_time_ts' | 'last_updated_time_ts' | 'updated_at_ts'
   onlyValid?: boolean
   limit?: number
   order?: 'asc' | 'desc'

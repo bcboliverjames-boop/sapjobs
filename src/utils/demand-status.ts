@@ -1,23 +1,20 @@
 import { getOrCreateUserProfile } from './user'
 
 function getApiBase(): string {
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
+
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
       if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-        const forcedRaw = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
-        const forced = String(forcedRaw || '').trim()
-        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(forced)) return forced
-        return 'http://127.0.0.1:3001'
+        return 'https://api.sapboss.com'
       }
     }
   } catch {
     // ignore
   }
-
-  const fromEnv =
-    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
-  if (fromEnv) return String(fromEnv)
 
   return 'https://api.sapboss.com'
 }
@@ -27,10 +24,19 @@ const API_TOKEN_KEY = 'sapboss_api_token'
 
 function getStoredToken(): string {
   try {
-    return String(uni.getStorageSync(API_TOKEN_KEY) || '').trim()
-  } catch {
-    return ''
-  }
+    const u: any = typeof uni !== 'undefined' ? (uni as any) : null
+    if (u && typeof u.getStorageSync === 'function') {
+      return String(u.getStorageSync(API_TOKEN_KEY) || '').trim()
+    }
+  } catch {}
+
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      return String((window as any).localStorage.getItem(API_TOKEN_KEY) || '').trim()
+    }
+  } catch {}
+
+  return ''
 }
 
 function requestJson<T = any>(opts: {
@@ -79,7 +85,7 @@ export async function markDemandStatus(
     },
     header: {
       'x-uid': String(user.uid || ''),
-      'x-nickname': String(user.nickname || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
     },
   })
 
@@ -112,7 +118,7 @@ export async function unmarkDemandStatus(
     },
     header: {
       'x-uid': String(user.uid || ''),
-      'x-nickname': String(user.nickname || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
     },
   })
 
@@ -210,7 +216,7 @@ export async function markDemandReliability(
     },
     header: {
       'x-uid': String(user.uid || ''),
-      'x-nickname': String(user.nickname || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
     },
   })
 
@@ -241,7 +247,7 @@ export async function unmarkDemandReliability(
     },
     header: {
       'x-uid': String(user.uid || ''),
-      'x-nickname': String(user.nickname || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
     },
   })
 

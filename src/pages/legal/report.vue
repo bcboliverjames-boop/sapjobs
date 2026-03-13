@@ -24,7 +24,7 @@
           <input class="input" v-model="contact" placeholder="邮箱/微信/手机号（可选）" />
         </view>
 
-        <button class="btn" :disabled="submitting" @click="submitReport">
+        <button class="btn" :disabled="submitting" @tap="submitReport">
           {{ submitting ? '提交中...' : '提交举报' }}
         </button>
       </view>
@@ -49,8 +49,8 @@
         </view>
 
         <view class="actions">
-          <button class="btn" @click="copyTemplate">复制举报模板</button>
-          <button class="btn btn-ghost" @click="sendEmail">一键发邮件（H5）</button>
+          <button class="btn" @tap="copyTemplate">复制举报模板</button>
+          <button class="btn btn-ghost" @tap="sendEmail">一键发邮件（H5）</button>
         </view>
       </view>
 
@@ -65,7 +65,7 @@
       </view>
 
       <view class="section">
-        <button class="btn" @click="goToContact">前往联系我们</button>
+        <button class="btn" @tap="goToContact">前往联系我们</button>
       </view>
     </view>
   </view>
@@ -83,8 +83,11 @@ function getApiBase(): string {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
       if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-        const forced = (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || ''
-        return forced ? String(forced) : 'http://127.0.0.1:3001'
+        const forced =
+          (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+        const forcedTrim = String(forced || '').trim()
+        if (forcedTrim) return forcedTrim
+        return 'https://api.sapboss.com'
       }
     }
   } catch {
@@ -242,7 +245,23 @@ const sendEmail = () => {
 
   // #ifdef H5
   const href = `mailto:${encodeURIComponent(CONTACT_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  window.location.href = href
+  try {
+    const opened = window.open(href, '_blank')
+    if (!opened) {
+      window.location.href = href
+    }
+  } catch {
+    window.location.href = href
+  }
+
+  setTimeout(() => {
+    uni.setClipboardData({
+      data: `${CONTACT_EMAIL}\n\n${body}`,
+      success: () => {
+        uni.showToast({ title: '已复制邮箱与模板，请粘贴到邮件发送', icon: 'none' })
+      },
+    })
+  }, 800)
   // #endif
 
   // #ifndef H5
