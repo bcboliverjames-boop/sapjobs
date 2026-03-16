@@ -1,182 +1,212 @@
 <template>
   <view class="page sap-demand-page">
-    <!-- 顶部区域：标题 + 简短说明 -->
-    <view class="page-header">
-      <view class="page-title-row">
-        <text class="badge">SAP</text>
-        <text class="page-title">顾问需求广场</text>
-        <view class="header-actions">
-          <view v-if="isAdmin" class="refresh-btn" @tap="handleRefreshTags" :class="{ 'refresh-btn--loading': refreshingTags }">
-            <text class="refresh-btn-text">{{ refreshingTags ? '刷新中...' : '🔄 刷新标签' }}</text>
-          </view>
-          <view class="publish-btn" @tap="goToPublish" :class="{ 'guest-disabled': isGuest }">
-            <text class="publish-btn-text">+ 发布</text>
-          </view>
-          <view class="icon-btn" @tap="goToAccount">
-            <uni-icons type="person" size="18" color="#F5F1E8" />
-          </view>
+    <!-- 顶部统一 Header (第一行) -->
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">顾问需求广场</text>
+        <view class="header-right"></view>
+      </view>
+    </view>
+
+    <!-- 操作栏 (第二行) -->
+    <view class="action-bar">
+      <view class="publish-btn-wrapper" @tap="goToPublish">
+        <text class="publish-btn-text">发布需求</text>
+      </view>
+      <view class="header-right-actions">
+        <view v-if="isAdmin" class="refresh-btn" @tap="handleRefreshTags" :class="{ 'refresh-btn--loading': refreshingTags }">
+          <text class="refresh-btn-text">{{ refreshingTags ? '刷新中...' : '🔄' }}</text>
+        </view>
+        <view class="icon-btn" @tap="goToAccount">
+          <uni-icons type="person" size="18" color="#0B1924" />
         </view>
       </view>
     </view>
 
-    <!-- 搜索框 -->
-    <view class="search-box">
-      <input
-        class="search-input"
-        name="demand-search"
-        v-model="searchKeyword"
-        type="text"
-        placeholder="搜索需求内容、模块、城市..."
-        confirm-type="search"
-        @input="handleSearch"
-        @confirm="handleSearch"
-        @click.stop
-      />
-      <view class="search-action" @click.stop="triggerSearch">
-        <text class="search-action-text">搜索</text>
+    <!-- 顶部固定区域 -->
+    <view class="sticky-header" :class="{ 'sticky-header--folded': isFolded }">
+      <!-- A. 搜索与按钮行 -->
+      <view class="header-main-row">
+        <view class="search-box">
+          <input
+            class="search-input"
+            v-model="searchKeyword"
+            type="text"
+            placeholder="搜索需求内容..."
+            confirm-type="search"
+            @confirm="triggerSearch"
+          />
+          <view v-if="searchKeyword" class="search-clear" @tap="clearSearch">
+            <text class="search-clear-text">✕</text>
+          </view>
+        </view>
+        <view class="header-btns">
+          <view class="fold-toggle-btn" @tap="toggleFold">
+            <text>{{ isFolded ? '展开筛选' : '收起' }}</text>
+            <uni-icons :type="isFolded ? 'arrowdown' : 'arrowup'" size="20" color="#FFFFFF" />
+          </view>
+        </view>
       </view>
-      <view v-if="searchKeyword" class="search-clear" @tap="clearSearch">
-        <text class="search-clear-text">✕</text>
+
+      <!-- B. 大面板筛选区 (展开状态) -->
+      <view class="filter-panel" v-if="!isFolded">
+        <scroll-view scroll-y class="filter-panel-scroll">
+          <!-- 模块 -->
+          <view class="filter-section">
+            <text class="filter-section-label">模块</text>
+            <view class="filter-chips">
+              <view
+                v-for="m in modulesForUi"
+                :key="m.code"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': m.code === activeModule }"
+                @tap="setModule(m.code)"
+              >
+                <text>{{ m.name }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 地区 -->
+          <view class="filter-section">
+            <text class="filter-section-label">地区</text>
+            <view class="filter-chips">
+              <view
+                v-for="c in cities"
+                :key="c"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': c === activeCity }"
+                @tap="setCity(c)"
+              >
+                <text>{{ c }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 周期 -->
+          <view class="filter-section">
+            <text class="filter-section-label">周期</text>
+            <view class="filter-chips">
+              <view
+                v-for="d in durationRanges"
+                :key="d.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': d.value === activeDurationRange }"
+                @tap="setDurationRange(d.value)"
+              >
+                <text>{{ d.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 年限 -->
+          <view class="filter-section">
+            <text class="filter-section-label">年限</text>
+            <view class="filter-chips">
+              <view
+                v-for="y in yearRanges"
+                :key="y.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': y.value === activeYearRange }"
+                @tap="setYearRange(y.value)"
+              >
+                <text>{{ y.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 合作方式 -->
+          <view class="filter-section">
+            <text class="filter-section-label">合作方式</text>
+            <view class="filter-chips">
+              <view
+                v-for="m in cooperationModes"
+                :key="m.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': m.value === activeCooperationMode }"
+                @tap="setCooperationMode(m.value)"
+              >
+                <text>{{ m.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 远程办公 -->
+          <view class="filter-section">
+            <text class="filter-section-label">远程/现场</text>
+            <view class="filter-chips">
+              <view
+                v-for="r in remoteModes"
+                :key="r.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': r.value === activeRemoteMode }"
+                @tap="setRemoteMode(r.value)"
+              >
+                <text>{{ r.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 语言 -->
+          <view class="filter-section">
+            <text class="filter-section-label">语言</text>
+            <view class="filter-chips">
+              <view
+                v-for="l in languageOptions"
+                :key="l.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': l.value === activeLanguage }"
+                @tap="setLanguage(l.value)"
+              >
+                <text>{{ l.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 时间范围 -->
+          <view class="filter-section">
+            <text class="filter-section-label">时间范围</text>
+            <view class="filter-chips">
+              <view
+                v-for="t in timeRanges"
+                :key="t.value"
+                class="panel-chip"
+                :class="{ 'panel-chip--active': t.value === activeTimeRange }"
+                @tap="setTimeRange(t.value)"
+              >
+                <text>{{ t.label }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+
+        <!-- 面板底部收起按钮 -->
+        <view class="panel-footer panel-footer--center">
+          <view class="fold-toggle-btn fold-toggle-btn--large" @tap="toggleFold">
+            <uni-icons type="arrowup" size="24" color="#FFFFFF" />
+          </view>
+        </view>
+      </view>
+
+      <!-- C. 折叠后的简易行 (显示已选摘要) -->
+      <view class="folded-summary" v-if="isFolded" @tap="toggleFold">
+        <scroll-view scroll-x class="summary-scroll" show-scrollbar="false">
+          <view class="summary-tags">
+            <view class="summary-tag">{{ getModuleLabel(activeModule) }}</view>
+            <view class="summary-tag">{{ activeCity }}</view>
+            <view class="summary-tag">{{ getDurationLabel(activeDurationRange) }}</view>
+            <view class="summary-tag">{{ getYearLabel(activeYearRange) }}</view>
+            <view class="summary-tag">{{ getCooperationLabel(activeCooperationMode) }}</view>
+            <view class="summary-tag">{{ getRemoteLabel(activeRemoteMode) }}</view>
+            <view class="summary-tag">{{ getLanguageLabel(activeLanguage) }}</view>
+            <view class="summary-tag">{{ getTimeLabel(activeTimeRange) }}</view>
+          </view>
+        </scroll-view>
       </view>
     </view>
-
-    <!-- 顶部筛选条（静态假数据版，仅前端过滤） -->
-    <scroll-view class="filter-strip" scroll-x="true" show-scrollbar="false">
-      <view class="filter-group">
-        <text class="filter-label">模块</text>
-        <view class="filter-chips">
-          <view
-            v-for="m in modulesForUi"
-            :key="m.code"
-            class="chip"
-            :class="{ 'chip--active': m.code === activeModule }"
-            @tap="setModule(m.code)"
-          >
-            <text class="chip-text">{{ m.name }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">时间</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="t in timeRanges"
-            :key="t.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': t.value === activeTimeRange }"
-            @tap="setTimeRange(t.value)"
-          >
-            <text class="chip-text">{{ t.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">口径</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="t in timeFields"
-            :key="t.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': t.value === activeTimeField }"
-            @tap="setTimeField(t.value)"
-          >
-            <text class="chip-text">{{ t.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">地区</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="c in cities"
-            :key="c"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': c === activeCity }"
-            @tap="setCity(c)"
-          >
-            <text class="chip-text">{{ c }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">工作方式</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="m in remoteModes"
-            :key="m.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': m.value === activeRemoteMode }"
-            @tap="setRemoteMode(m.value)"
-          >
-            <text class="chip-text">{{ m.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">合作方式</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="m in cooperationModes"
-            :key="m.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': m.value === activeCooperationMode }"
-            @tap="setCooperationMode(m.value)"
-          >
-            <text class="chip-text">{{ m.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">年限</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="y in yearRanges"
-            :key="y.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': y.value === activeYearRange }"
-            @tap="setYearRange(y.value)"
-          >
-            <text class="chip-text">{{ y.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">周期</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="d in durationRanges"
-            :key="d.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': d.value === activeDurationRange }"
-            @tap="setDurationRange(d.value)"
-          >
-            <text class="chip-text">{{ d.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view class="filter-group">
-        <text class="filter-label">语言</text>
-        <view class="filter-chips tight">
-          <view
-            v-for="l in languageOptions"
-            :key="l.value"
-            class="chip chip--ghost"
-            :class="{ 'chip--active-ghost': l.value === activeLanguage }"
-            @tap="setLanguage(l.value)"
-          >
-            <text class="chip-text">{{ l.label }}</text>
-          </view>
-        </view>
-      </view>
-    </scroll-view>
 
     <!-- 需求卡片列表（使用假数据） -->
     <scroll-view
@@ -195,39 +225,42 @@
       >
         <!-- A. 原始信息区 -->
         <view class="card-raw">
-          <text class="card-raw-text">
-            {{ card.raw_text }}
-          </text>
+          <view class="card-raw-header">
+            <text class="card-raw-text">
+              {{ card.raw_text }}
+            </text>
+            <view
+              class="card-favorite-btn-inline"
+              :class="{ 'card-favorite-btn--active': card.isFavorited, 'guest-disabled': isGuest }"
+              @tap.stop="toggleCardFavorite(card)"
+            >
+              <text class="card-favorite-icon">{{ card.isFavorited ? '❤️' : '🤍' }}</text>
+            </view>
+          </view>
         </view>
 
          <!-- B. 结构化标签区 -->
-         <view class="card-tags">
-           <view class="tag tag--primary">
-             <text>{{ card.module_labels.join(' / ') }}</text>
+         <view class="tags-grid card-tags">
+           <view v-for="m in card.module_labels" :key="m" class="tag-item tag-module">
+             <text class="tag-text">{{ m }}</text>
            </view>
-           <view class="tag" v-if="card.city">
-             <text>{{ card.city }}</text>
+           <view v-if="card.city" class="tag-item tag-city">
+             <text class="tag-text">📍 {{ card.city }}</text>
            </view>
-           <view class="tag" v-if="card.duration_text">
-             <text>{{ card.duration_text }}</text>
+           <view v-if="card.duration_text" class="tag-item tag-duration">
+             <text class="tag-text">⏱️ {{ card.duration_text }}</text>
            </view>
-           <view class="tag" v-if="card.years_text">
-             <text>{{ card.years_text }}</text>
+           <view v-if="card.years_text" class="tag-item tag-years">
+             <text class="tag-text">🎓 {{ card.years_text }}</text>
            </view>
-           <view class="tag tag--accent" v-if="card.language">
-             <text>{{ card.language }}</text>
+           <view v-if="card.language" class="tag-item tag-lang">
+             <text class="tag-text">🌐 {{ card.language }}</text>
            </view>
-           <view class="tag tag--rate" v-if="card.daily_rate">
-             <text>💰 {{ formatDailyRate(card.daily_rate) }}</text>
+           <view v-if="card.daily_rate" class="tag-item tag-rate">
+             <text class="tag-text">💰 {{ formatDailyRate(card.daily_rate) }}</text>
            </view>
-           <view class="tag tag--ghost" v-if="card.cooperation_mode">
-             <text>{{ card.cooperation_mode }}</text>
-           </view>
-           <view v-for="t in card.extra_tags" :key="t" class="tag tag--ghost">
-             <text>{{ t }}</text>
-           </view>
-           <view class="tag tag--related" v-if="card.relatedCount && card.relatedCount > 0">
-             <text>关联需求数 {{ card.relatedCount }}</text>
+           <view v-if="card.cooperation_mode" class="tag-item tag-mode">
+             <text class="tag-text">🤝 {{ card.cooperation_mode }}</text>
            </view>
          </view>
 
@@ -244,7 +277,10 @@
            >
              <text class="card-status-icon">📤</text>
              <text class="card-status-label">已投递</text>
-             <text class="card-status-count">({{ card.statusCounts?.applied || 0 }})</text>
+             <text
+               class="card-status-count"
+               :class="{ 'card-status-count--nonzero': (card.statusCounts?.applied || 0) > 0 }"
+             >({{ card.statusCounts?.applied || 0 }})</text>
            </view>
            <view 
              class="card-status-item"
@@ -257,7 +293,10 @@
            >
              <text class="card-status-icon">💼</text>
              <text class="card-status-label">已面试</text>
-             <text class="card-status-count">({{ card.statusCounts?.interviewed || 0 }})</text>
+             <text
+               class="card-status-count"
+               :class="{ 'card-status-count--nonzero': (card.statusCounts?.interviewed || 0) > 0 }"
+             >({{ card.statusCounts?.interviewed || 0 }})</text>
            </view>
            <view 
              class="card-status-item"
@@ -270,7 +309,10 @@
            >
              <text class="card-status-icon">✅</text>
              <text class="card-status-label">已到岗</text>
-             <text class="card-status-count">({{ card.statusCounts?.onboarded || 0 }})</text>
+             <text
+               class="card-status-count"
+               :class="{ 'card-status-count--nonzero': (card.statusCounts?.onboarded || 0) > 0 }"
+             >({{ card.statusCounts?.onboarded || 0 }})</text>
            </view>
            <view 
              class="card-status-item"
@@ -283,7 +325,10 @@
            >
              <text class="card-status-icon">🔒</text>
              <text class="card-status-label">已关闭</text>
-             <text class="card-status-count">({{ card.statusCounts?.closed || 0 }})</text>
+             <text
+               class="card-status-count"
+               :class="{ 'card-status-count--nonzero': (card.statusCounts?.closed || 0) > 0 }"
+             >({{ card.statusCounts?.closed || 0 }})</text>
            </view>
          </view>
 
@@ -295,7 +340,10 @@
           >
             <text class="card-reliability-icon">👍</text>
             <text class="card-reliability-label">靠谱</text>
-            <text class="card-reliability-count">({{ card.reliabilityCounts?.reliable || 0 }})</text>
+            <text
+              class="card-reliability-count"
+              :class="{ 'card-reliability-count--nonzero': (card.reliabilityCounts?.reliable || 0) > 0 }"
+            >({{ card.reliabilityCounts?.reliable || 0 }})</text>
           </view>
           <view 
             class="card-reliability-item card-reliability-item--unreliable"
@@ -304,14 +352,10 @@
           >
             <text class="card-reliability-icon">👎</text>
             <text class="card-reliability-label">不靠谱</text>
-            <text class="card-reliability-count">({{ card.reliabilityCounts?.unreliable || 0 }})</text>
-          </view>
-          <view
-            class="card-favorite-btn"
-            :class="{ 'card-favorite-btn--active': card.isFavorited, 'guest-disabled': isGuest }"
-            @tap.stop="toggleCardFavorite(card)"
-          >
-            <text class="card-favorite-icon">{{ card.isFavorited ? '❤️' : '🤍' }}</text>
+            <text
+              class="card-reliability-count"
+              :class="{ 'card-reliability-count--nonzero': (card.reliabilityCounts?.unreliable || 0) > 0 }"
+            >({{ card.reliabilityCounts?.unreliable || 0 }})</text>
           </view>
         </view>
 
@@ -374,6 +418,7 @@ import {
 } from '../../utils/sap-unique-demands'
 import { refreshAllDemandsTags } from '../../utils/sap-demands'
 import { getSapModuleFilterOptions, normalizeSapModuleToken, sapModuleCodeToLabel } from '../../utils/sap-modules'
+import { getRewardPoints } from '../../utils/points-config'
 import {
   markDemandStatus,
   unmarkDemandStatus,
@@ -383,10 +428,12 @@ import {
   unmarkDemandReliability,
   getDemandReliabilityCounts,
   getUserDemandReliability,
+  statusOptions,
 } from '../../utils/demand-status'
-import { getOrCreateUserProfile } from '../../utils/user'
+import { getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
 import { ugcReactionToggle } from '../../utils/ugc'
 import { isAdminUid } from '../../utils/admin'
+import { safeNavigateBack } from '../../utils'
 
 function getApiBase(): string {
   const fromEnv =
@@ -425,27 +472,33 @@ function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data
 
 type DemandCard = {
   id: string;
-  raw_text: string;
-  module_labels: string[];
-  module_codes: string[];
-  city: string;
+  title: string;
+  rawText: string;
+  tags: string[];
+  createdAt?: any;
+  updatedAt?: any;
+  raw?: any;
+  raw_text?: string;
+  canonical_raw_id?: string;
+  city?: string;
+  module_codes?: string[];
+  module_labels?: string[];
   duration_text: string;
   years_text: string;
   language: string;
   daily_rate: string;
+  richness_score?: number;
   is_remote: boolean | null;
   cooperation_mode: string;
   years_bucket: '' | '0-3' | '4-6' | '7-10' | '10+';
   duration_bucket: '' | 'SHORT' | 'MID' | 'LONG';
   extra_tags: string[];
   provider_name: string;
-  createdAt?: any;
-  updatedAt?: any;
   relatedCount?: number;
   similarCount?: number; // 相似需求数量
   similarDemands?: Array<{ // 折叠的相似需求列表
     id?: string;
-    raw_text: string;
+    raw_text?: string;
     createdAt: Date | string;
     provider_user_id?: string;
     provider_name: string;
@@ -457,15 +510,198 @@ type DemandCard = {
     onboarded: number;
     closed: number;
   };
+  statusCountsUpdatedAt?: number;
   reliabilityCounts?: {
     reliable: number;
     unreliable: number;
   };
+  reliabilityCountsUpdatedAt?: number;
   userStatuses?: string[]; // 当前用户已标记的状态
   userReliability?: boolean | null; // 当前用户的评价
+  reliabilityBusy?: boolean;
+  statusBusy?: boolean;
   isFavorited?: boolean;
   favoriting?: boolean;
 };
+
+const RELIABILITY_OVERRIDE_TTL_MS = 600_000
+const reliabilityOverrideCache: Map<string, { value: boolean | null; ts: number }> = new Map()
+
+const RELIABILITY_OVERRIDE_STORAGE_PREFIX = 'sapjobs_reliability_override_v1:'
+const RELIABILITY_TOUCHED_STORAGE_KEY = 'sapjobs_reliability_touched_v1'
+const STATUS_TOUCHED_STORAGE_KEY = 'sapjobs_status_touched_v1'
+
+const storageSet = (key: string, value: any) => {
+  try {
+    if (typeof uni !== 'undefined' && (uni as any).setStorageSync) {
+      ;(uni as any).setStorageSync(key, value)
+      return
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      ;(window as any).localStorage.setItem(key, JSON.stringify(value))
+    }
+  } catch {}
+}
+
+const touchReliabilityDemandId = (id: string) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  try {
+    const now = Date.now()
+    const raw = storageGet(RELIABILITY_TOUCHED_STORAGE_KEY)
+    const list = Array.isArray(raw?.ids) ? raw.ids : []
+    const next = [key, ...list.filter((x: any) => String(x || '').trim() && String(x || '').trim() !== key)].slice(0, 50)
+    storageSet(RELIABILITY_TOUCHED_STORAGE_KEY, { ts: now, ids: next })
+  } catch {}
+}
+
+const getTouchedReliabilityDemandIds = (): string[] => {
+  try {
+    const raw = storageGet(RELIABILITY_TOUCHED_STORAGE_KEY)
+    if (!raw) return []
+    const ts = Number(raw.ts || 0)
+    if (!ts || Date.now() - ts > RELIABILITY_OVERRIDE_TTL_MS) {
+      storageRemove(RELIABILITY_TOUCHED_STORAGE_KEY)
+      return []
+    }
+    const ids = Array.isArray(raw.ids) ? raw.ids : []
+    return ids.map((x: any) => String(x || '').trim()).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+const getTouchedReliabilityTs = (): number => {
+  try {
+    const raw = storageGet(RELIABILITY_TOUCHED_STORAGE_KEY)
+    const ts = Number(raw?.ts || 0)
+    return Number.isFinite(ts) ? ts : 0
+  } catch {
+    return 0
+  }
+}
+
+const touchStatusDemandId = (id: string) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  try {
+    const now = Date.now()
+    const raw = storageGet(STATUS_TOUCHED_STORAGE_KEY)
+    const list = Array.isArray(raw?.ids) ? raw.ids : []
+    const next = [key, ...list.filter((x: any) => String(x || '').trim() && String(x || '').trim() !== key)].slice(0, 50)
+    storageSet(STATUS_TOUCHED_STORAGE_KEY, { ts: now, ids: next })
+  } catch {}
+}
+
+const getTouchedStatusDemandIds = (): string[] => {
+  try {
+    const raw = storageGet(STATUS_TOUCHED_STORAGE_KEY)
+    if (!raw) return []
+    const ts = Number(raw.ts || 0)
+    if (!ts || Date.now() - ts > STATUS_OVERRIDE_TTL_MS) {
+      storageRemove(STATUS_TOUCHED_STORAGE_KEY)
+      return []
+    }
+    const ids = Array.isArray(raw.ids) ? raw.ids : []
+    return ids.map((x: any) => String(x || '').trim()).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+const storageGet = (key: string): any => {
+  try {
+    if (typeof uni !== 'undefined' && (uni as any).getStorageSync) {
+      return (uni as any).getStorageSync(key)
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      const raw = (window as any).localStorage.getItem(key)
+      if (!raw) return undefined
+      return JSON.parse(raw)
+    }
+  } catch {}
+  return undefined
+}
+
+const storageRemove = (key: string) => {
+  try {
+    if (typeof uni !== 'undefined' && (uni as any).removeStorageSync) {
+      ;(uni as any).removeStorageSync(key)
+      return
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      ;(window as any).localStorage.removeItem(key)
+    }
+  } catch {}
+}
+
+const STATUS_OVERRIDE_TTL_MS = 120_000
+const statusOverrideCache: Map<string, { value: string[]; ts: number }> = new Map()
+
+const getInteractionId = (card: DemandCard | null | undefined): string => {
+  if (!card) return ''
+  const raw = String((card as any).canonical_raw_id || '').trim()
+  return raw || String(card.id || '').trim()
+}
+
+const setReliabilityOverride = (id: string, value: boolean | null) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  const payload = { value, ts: Date.now() }
+  reliabilityOverrideCache.set(key, payload)
+  storageSet(`${RELIABILITY_OVERRIDE_STORAGE_PREFIX}${key}`, payload)
+  touchReliabilityDemandId(key)
+}
+
+const getReliabilityOverride = (id: string): boolean | null | undefined => {
+  const key = String(id || '').trim()
+  if (!key) return undefined
+  const now = Date.now()
+  const hit = reliabilityOverrideCache.get(key)
+  if (hit) {
+    if (now - hit.ts > RELIABILITY_OVERRIDE_TTL_MS) {
+      reliabilityOverrideCache.delete(key)
+      storageRemove(`${RELIABILITY_OVERRIDE_STORAGE_PREFIX}${key}`)
+      return undefined
+    }
+    return hit.value
+  }
+
+  const stored = storageGet(`${RELIABILITY_OVERRIDE_STORAGE_PREFIX}${key}`)
+  if (!stored) return undefined
+  const ts = Number(stored.ts || 0)
+  if (!ts || now - ts > RELIABILITY_OVERRIDE_TTL_MS) {
+    storageRemove(`${RELIABILITY_OVERRIDE_STORAGE_PREFIX}${key}`)
+    return undefined
+  }
+  const value = stored.value === true ? true : stored.value === false ? false : null
+  reliabilityOverrideCache.set(key, { value, ts })
+  return value
+}
+
+const setStatusOverride = (id: string, value: string[]) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  statusOverrideCache.set(key, { value: Array.isArray(value) ? value.slice() : [], ts: Date.now() })
+}
+
+const getStatusOverride = (id: string): string[] | undefined => {
+  const key = String(id || '').trim()
+  if (!key) return undefined
+  const hit = statusOverrideCache.get(key)
+  if (!hit) return undefined
+  if (Date.now() - hit.ts > STATUS_OVERRIDE_TTL_MS) {
+    statusOverrideCache.delete(key)
+    return undefined
+  }
+  return hit.value
+}
 
 const BASE_MODULES = getSapModuleFilterOptions()
 
@@ -484,7 +720,59 @@ const modulesForUi = computed(() => {
   return out
 })
 
-const cities = ['全部', '上海', '北京', '深圳', '全国', '远程', '海外', '欧洲', '菲律宾'];
+const loading = ref(true)
+const allDemands = ref<DemandCard[]>([])
+const cities = ref<string[]>(['全部'])
+
+const updateDynamicCities = () => {
+  const freq = new Map<string, number>()
+  const add = (name: string) => {
+    const k = String(name || '').trim()
+    if (!k) return
+    freq.set(k, (freq.get(k) || 0) + 1)
+  }
+
+  // 从当前加载的所有需求中提取城市标签
+  allDemands.value.forEach((card) => {
+    const raw = String(card.city || '').trim()
+    if (!raw) return
+    if (raw.includes('/')) {
+      raw
+        .split('/')
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+        .forEach((x) => add(x))
+      return
+    }
+    add(raw)
+  })
+
+  const specials = ['全国', '远程', '海外', '欧洲', '菲律宾']
+  const all = Array.from(freq.keys()).filter((x) => x !== '全部')
+  const sorted = all
+    .slice()
+    .sort((a, b) => {
+      const aSpecial = specials.includes(a)
+      const bSpecial = specials.includes(b)
+      if (aSpecial && !bSpecial) return -1
+      if (!aSpecial && bSpecial) return 1
+      const fa = freq.get(a) || 0
+      const fb = freq.get(b) || 0
+      if (fb !== fa) return fb - fa
+      return a.localeCompare(b, 'zh-Hans-CN')
+    })
+
+  cities.value = ['全部', ...sorted]
+
+  if (!cities.value.includes(String(activeCity.value || '').trim())) {
+    activeCity.value = '全部'
+  }
+}
+
+// 监听数据变化更新城市列表
+watch(allDemands, () => {
+  updateDynamicCities()
+}, { deep: true })
 
 const activeModule = ref('ALL');
 const activeCity = ref('全部');
@@ -561,8 +849,81 @@ const activeDurationRange = ref<'ALL' | 'SHORT' | 'MID' | 'LONG'>('ALL')
 const activeLanguage = ref<'ALL' | 'EN' | 'JP'>('ALL')
 const activeCooperationMode = ref<CooperationModeOpt>('ALL')
 
-const loading = ref(true)
-const allDemands = ref<DemandCard[]>([])
+const isFolded = ref(false)
+const lastScrollTop = ref(0)
+
+const toggleFold = () => {
+  isFolded.value = !isFolded.value
+}
+
+const getModuleLabel = (code: string) => {
+  const found = modulesForUi.value.find(m => m.code === code)
+  return found ? found.name : '全部模块'
+}
+
+const getYearLabel = (value: string) => {
+  const found = yearRanges.find(y => y.value === value)
+  return found ? found.label : '全部年限'
+}
+
+const getCooperationLabel = (value: string) => {
+  const found = cooperationModes.value.find(m => m.value === value)
+  return found ? found.label : '全部合作'
+}
+
+const getDurationLabel = (value: string) => {
+  const found = durationRanges.find(d => d.value === value)
+  return found ? found.label : '全部周期'
+}
+
+const getTimeLabel = (value: string) => {
+  const found = timeRanges.find(t => t.value === value)
+  return found ? found.label : '全部时间'
+}
+
+const getLanguageLabel = (value: string) => {
+  const found = languageOptions.find(l => l.value === value)
+  return found ? found.label : '全部语言'
+}
+
+const getRemoteLabel = (value: string) => {
+  const found = remoteModes.find(r => r.value === value)
+  return found ? found.label : '远程/现场'
+}
+
+const handleListScroll = (e: any) => {
+  const detail = (e && (e.detail || e.target)) || {}
+  const scrollTop = Number(detail.scrollTop || 0)
+  const clientHeight = Number(detail.clientHeight || detail.offsetHeight || 0)
+  const scrollHeight = Number(detail.scrollHeight || 0)
+  const nearBottom = scrollHeight - clientHeight - scrollTop < 200
+
+  // A. 处理筛选面板折叠逻辑
+  // 向上滚动超过 50px 且当前是展开状态，则折叠
+  if (scrollTop > 50 && scrollTop > lastScrollTop.value && !isFolded.value) {
+    isFolded.value = true
+  }
+  // 向下滚动（回到顶部）则自动展开
+  if (scrollTop < 20 && isFolded.value) {
+    isFolded.value = false
+  }
+  lastScrollTop.value = scrollTop
+
+  // B. 处理瀑布流加载逻辑
+  // H5 下 scrolltolower 在部分情况下不触发，这里做兜底：接近底部时主动触发 loadMore
+  if (!hasMore.value) return
+  if (loading.value || loadingMore.value) return
+
+  if (!scrollHeight || !clientHeight) return
+
+  if (!nearBottom) return
+
+  const now = Date.now()
+  if (now - lastNearBottomTriggerAt.value < 1200) return
+  lastNearBottomTriggerAt.value = now
+  loadMore()
+}
+
 const nextOffset = ref(0)
 const loadingMore = ref(false)
 const hasMore = ref(true)
@@ -585,6 +946,16 @@ const commentsByDemand = ref<
     }[]
   >
 >({})
+
+const isLocalhostRuntime = (): boolean => {
+  try {
+    if (typeof window === 'undefined') return false
+    const host = String((window as any).location && (window as any).location.hostname)
+    return /^(localhost|127\.0\.0\.1)$/i.test(host)
+  } catch {
+    return false
+  }
+}
 
 const LOCATION_KEYWORDS = [
   '北京',
@@ -614,6 +985,8 @@ const LOCATION_KEYWORDS = [
   '济南',
   '苏州',
   '无锡',
+  '泰安',
+  '嘉兴',
   '宁波',
   '佛山',
   '东莞',
@@ -629,15 +1002,49 @@ const LOCATION_KEYWORDS = [
 ]
 const LOCATION_SET = new Set(LOCATION_KEYWORDS)
 
+const isLocationLikeTag = (raw: string): boolean => {
+  const s = String(raw || '').trim()
+  if (!s) return false
+  if (normalizeSapModuleToken(s)) return false
+  if (s === '全国' || s === '远程' || s === '海外' || s === '欧洲' || s === '菲律宾') return true
+  if (/[\u4e00-\u9fa5]{2,6}/.test(s) && /(?:市|区|县|州|盟|旗)$/.test(s)) return true
+  if (/^[\u4e00-\u9fa5]{2,4}$/.test(s)) return true
+  return false
+}
+
 const safeJsonArray = (v: any): string[] => {
   if (!v) return []
+  if (Array.isArray(v)) return v.map((x) => String(x || '').trim()).filter(Boolean)
   try {
     const obj = typeof v === 'string' ? JSON.parse(v) : v
-    if (Array.isArray(obj)) return obj.map((x) => String(x)).filter(Boolean)
-    return []
+    if (!Array.isArray(obj)) return []
+    return obj.map((x) => String(x || '').trim()).filter(Boolean)
   } catch {
     return []
   }
+}
+
+const isBucketLikeTag = (tag: string): boolean => {
+  const t = String(tag || '').trim().toUpperCase()
+  if (!t) return false
+  if (t === 'LONG' || t === 'MID' || t === 'SHORT') return true
+  if (/^\d{1,2}-\d{1,2}$/.test(t)) return true
+  if (t === '10+' || t === '10年以上' || t === '8年以上') return true
+  return false
+}
+
+const sanitizeExtraTags = (tags: string[]): string[] => {
+  const raw = Array.isArray(tags) ? tags : []
+  const out: string[] = []
+  for (const it of raw) {
+    const s = String(it || '').trim()
+    if (!s) continue
+    if (isBucketLikeTag(s)) continue
+    if (out.includes(s)) continue
+    out.push(s)
+    if (out.length >= 6) break
+  }
+  return out
 }
 
 const extractModulesFromUnique = (d: SapUniqueDemandDoc): string[] => {
@@ -654,12 +1061,47 @@ const extractModulesFromUnique = (d: SapUniqueDemandDoc): string[] => {
 
 const extractCityFromUnique = (d: SapUniqueDemandDoc): string => {
   const tags = safeJsonArray((d as any).tags_json)
+  const hit: string[] = []
   for (const t of tags) {
     const k = String(t || '').trim()
     if (!k) continue
-    if (LOCATION_SET.has(k)) return k
+    if (LOCATION_SET.has(k) || isLocationLikeTag(k)) {
+      if (!hit.includes(k)) hit.push(k)
+      if (hit.length >= 4) break
+    }
   }
-  return ''
+  return hit.join('/')
+}
+
+const computeLocalRichnessScore = (rawText: string, base: any): number => {
+  try {
+    const raw = String(rawText || '').trim()
+    const parsed = parseDemandText(raw)
+    const moduleCodes = Array.isArray(parsed?.module_codes) ? parsed.module_codes : []
+    const city = String((base && base.city) || parsed?.city || '').trim()
+    const duration = String((base && base.duration_text) || parsed?.duration_text || '').trim()
+    const years = String((base && base.years_text) || parsed?.years_text || '').trim()
+    const lang = String((base && base.language) || parsed?.language || '').trim()
+    const rate = String((base && (base.daily_rate || base.daily_rate_text)) || parsed?.daily_rate || '').trim()
+    const coop = String((base && base.cooperation_mode) || '').trim()
+    const remote = (base && typeof base.is_remote === 'boolean') ? base.is_remote : parsed?.is_remote
+
+    let score = 0
+    if (raw.length >= 30) score += 10
+    if (raw.length >= 60) score += 10
+    if (moduleCodes.length > 0) score += 20
+    if (city) score += 10
+    if (duration) score += 10
+    if (years) score += 10
+    if (lang) score += 10
+    if (rate) score += 10
+    if (coop) score += 5
+    if (remote === true || remote === false) score += 5
+
+    return Math.max(0, Math.min(100, Math.round(score)))
+  } catch {
+    return 0
+  }
 }
 
 const extractCityFromRawText = (rawText: string): string => {
@@ -668,11 +1110,45 @@ const extractCityFromRawText = (rawText: string): string => {
   if (/菲律宾|philippines/i.test(text)) return '菲律宾'
   if (/欧洲|europe/i.test(text)) return '欧洲'
   if (/海外|overseas|国外/i.test(text)) return '海外'
+
+  // 优先使用内置解析器（支持多城市/省份）
+  try {
+    const parsed = parseDemandText(text)
+    const c = String(parsed?.city || '').trim()
+    if (c) return c
+  } catch {
+    // ignore
+  }
+
+  // 高概率位置：模块括号后紧跟城市，如 “【WM】宁德 5年以上 ...”
+  try {
+    const m1 = text.match(/】([\u4e00-\u9fa5]{2,4})(?=\s|\d|[\u4e00-\u9fa5])/)
+    if (m1 && m1[1]) {
+      const cand = String(m1[1]).trim()
+      if (cand && isLocationLikeTag(cand)) return cand
+    }
+  } catch {}
+
+  // 关键词提示：地点/地区/城市
+  try {
+    const m2 = text.match(/(?:地点|地区|城市)[:：\s]*([\u4e00-\u9fa5]{2,6})/)
+    if (m2 && m2[1]) {
+      const cand = String(m2[1]).trim().replace(/(市|区|县|州|盟|旗)$/, '')
+      if (cand && isLocationLikeTag(cand)) return cand
+    }
+  } catch {}
+
   // 兜底：扫描国内城市/地区关键词（避免仅靠 tags/attrs 导致“合肥”等丢失）
   for (const k of LOCATION_KEYWORDS) {
     if (!k) continue
     if (text.includes(k)) return k
   }
+
+  // 进一步兜底：识别“xx市/xx区/xx县/xx州”等尾缀城市
+  try {
+    const m = text.match(/(?:^|[\s,，。/\\\[\]（）()])([\u4e00-\u9fa5]{2,4})(?:市|区|县|州|盟|旗)/)
+    if (m && m[1]) return String(m[1]).trim()
+  } catch {}
   return ''
 }
 
@@ -768,8 +1244,42 @@ const mapToCard = (item: any, index: number): DemandCard => {
   const yearsText = String(item.years_text || '').trim()
   const rawText = String(item.raw_text || '').trim()
 
+  const parsed = parseDemandText(rawText)
+  const parsedCity = String(parsed?.city || '').trim()
+  const parsedDurationText = String(parsed?.duration_text || '').trim()
+
   const language = normalizeLanguageLabel(String(item.language || ''))
   const cooperation_mode = normalizeCooperationModeLabel(String(item.cooperation_mode || ''), rawText)
+
+  const moduleCodes = (() => {
+    const raw = (item as any)?.module_codes
+    if (Array.isArray(raw) && raw.length) {
+      return raw
+        .map((x: any) => String(x || '').trim())
+        .map((x: string) => normalizeSapModuleToken(x) || x.toUpperCase())
+        .filter(Boolean)
+    }
+
+    try {
+      const fromUnique = extractModulesFromUnique(item as any)
+      if (fromUnique && fromUnique.length) return fromUnique
+    } catch {
+      // ignore
+    }
+
+    const parsed = parseDemandText(rawText)
+    const base = (parsed && (parsed as any).module_codes) || []
+    return (base || [])
+      .map((x: any) => String(x || '').trim())
+      .map((x: string) => normalizeSapModuleToken(x) || x.toUpperCase())
+      .filter(Boolean)
+  })()
+
+  const moduleLabels = moduleCodes.map(toModuleLabel).filter(Boolean)
+
+  const richnessScoreRaw = (item as any)?.richness_score
+  const richnessFromBackend = Number.isFinite(Number(richnessScoreRaw)) ? Number(richnessScoreRaw) : 0
+  const richness_score = richnessFromBackend > 0 ? richnessFromBackend : computeLocalRichnessScore(rawText, item)
 
   const isRemote = (() => {
     if (typeof item.is_remote === 'boolean') return item.is_remote
@@ -788,30 +1298,40 @@ const mapToCard = (item: any, index: number): DemandCard => {
       ? item.duration_bucket
       : deriveDurationBucket(durationText)
 
+  const finalDurationText = (() => {
+    if (parsedDurationText && /周期|工期|合同|项目|时长|为期|duration/i.test(rawText)) return parsedDurationText
+    return durationText || parsedDurationText
+  })()
+
+  const finalCity = (() => {
+    // 当解析器识别出多地点（如 北京/西安/重庆），优先使用解析结果
+    if (parsedCity && parsedCity.includes('/')) return parsedCity
+    return city || parsedCity || extractCityFromRawText(rawText) || extractCityFromUnique(item as any) || ''
+  })()
+
   return {
-    id: item.id || String(index),
+    id: String((item as any)?._id || (item as any)?.id || (item as any)?.unique_demand_id || index),
+    title: String((item as any)?.title || '').trim() || String(rawText || '').trim(),
+    rawText,
+    tags: [],
     raw_text: rawText,
-    module_labels: item.module_labels,
-    module_codes: item.module_codes,
-    city,
-    duration_text: durationText,
-    years_text: yearsText,
+    canonical_raw_id: String((item as any)?.canonical_raw_id || '').trim() || undefined,
+    module_labels: moduleLabels,
+    module_codes: moduleCodes,
+    city: finalCity,
+    duration_text: finalDurationText,
+    years_text: yearsText || String((parsed && parsed.years_text) || ''),
     language,
-    daily_rate: item.daily_rate,
+    daily_rate: String(item.daily_rate || '').trim(),
+    richness_score,
     is_remote: isRemote,
     cooperation_mode,
-    years_bucket,
-    duration_bucket,
-    extra_tags: Array.isArray(item.extra_tags) ? item.extra_tags.map((x: any) => String(x || '').trim()).filter(Boolean) : [],
-    provider_name: item.provider_name,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    relatedCount: item.relatedCount || 0,
-    similarCount: item.similarCount || 0,
-    similarDemands: item.similarDemands || [],
-    // 初始化状态和评价数据，确保始终有值（即使为0也显示）
-    statusCounts: item.statusCounts || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 },
-    reliabilityCounts: item.reliabilityCounts || { reliable: 0, unreliable: 0 },
+    years_bucket: deriveYearsBucket(yearsText),
+    duration_bucket: deriveDurationBucket(durationText),
+    extra_tags: sanitizeExtraTags(safeJsonArray((item as any)?.extra_tags_json || (item as any)?.extra_tags || [])),
+    provider_name: String((item as any)?.provider_name || (item as any)?.publisher_name || '未知'),
+    createdAt: (item as any)?.createdAt || (item as any)?.created_time || (item as any)?.message_time || null,
+    updatedAt: (item as any)?.updatedAt || (item as any)?.last_updated_time || (item as any)?.updated_at || null,
   }
 }
 
@@ -885,14 +1405,26 @@ const fetchUniqueDemandsPage = async (opts: {
 }
 
 const enrichCards = async (cards: DemandCard[]) => {
-  const demandIds = cards.map((d) => d.id).filter(Boolean) as string[]
+  const demandIds = cards.map((d) => getInteractionId(d)).filter(Boolean) as string[]
   const statusCountsMap = new Map<string, any>()
   const reliabilityCountsMap = new Map<string, any>()
 
-  const statusCountsCache: Map<string, any> = (enrichCards as any)._statusCountsCache || new Map()
-  const reliabilityCountsCache: Map<string, any> = (enrichCards as any)._reliabilityCountsCache || new Map()
+  const COUNTS_CACHE_TTL_MS = 60_000
+  type CachedCounts = { v: any; ts: number }
+  const statusCountsCache: Map<string, CachedCounts> = (enrichCards as any)._statusCountsCache || new Map()
+  const reliabilityCountsCache: Map<string, CachedCounts> = (enrichCards as any)._reliabilityCountsCache || new Map()
   ;(enrichCards as any)._statusCountsCache = statusCountsCache
   ;(enrichCards as any)._reliabilityCountsCache = reliabilityCountsCache
+
+  const getFresh = (cache: Map<string, CachedCounts>, id: string) => {
+    const hit = cache.get(id)
+    if (!hit) return undefined
+    if (Date.now() - Number(hit.ts || 0) > COUNTS_CACHE_TTL_MS) {
+      cache.delete(id)
+      return undefined
+    }
+    return hit.v
+  }
 
   const runInBatches = async (ids: string[], batchSize: number, worker: (id: string) => Promise<void>) => {
     const size = Math.max(1, Math.min(30, batchSize))
@@ -904,36 +1436,47 @@ const enrichCards = async (cards: DemandCard[]) => {
 
   if (demandIds.length > 0) {
     demandIds.forEach((id) => {
-      if (statusCountsCache.has(id)) statusCountsMap.set(id, statusCountsCache.get(id))
-      if (reliabilityCountsCache.has(id)) reliabilityCountsMap.set(id, reliabilityCountsCache.get(id))
+      const st = getFresh(statusCountsCache, id)
+      const rel = getFresh(reliabilityCountsCache, id)
+      if (st !== undefined) statusCountsMap.set(id, st)
+      if (rel !== undefined) reliabilityCountsMap.set(id, rel)
     })
 
     const missingIds = demandIds.filter((id) => !statusCountsMap.has(id) || !reliabilityCountsMap.has(id))
     // 不阻塞首屏渲染：后台补齐 counts，且做并发限流（避免 2N 个请求同时起飞）
     runInBatches(missingIds, 8, async (id) => {
+      const requestTs = Date.now()
       try {
         const [statusCounts, reliabilityCounts] = await Promise.all([
           getDemandStatusCounts(id),
           getDemandReliabilityCounts(id),
         ])
-        statusCountsCache.set(id, statusCounts)
-        reliabilityCountsCache.set(id, reliabilityCounts)
+        statusCountsCache.set(id, { v: statusCounts, ts: requestTs })
+        reliabilityCountsCache.set(id, { v: reliabilityCounts, ts: requestTs })
         statusCountsMap.set(id, statusCounts)
         reliabilityCountsMap.set(id, reliabilityCounts)
 
-        const card = cards.find((c) => c.id === id)
+        const card = cards.find((c) => getInteractionId(c) === id)
         if (card) {
-          card.statusCounts = statusCounts
-          card.reliabilityCounts = reliabilityCounts
+          const lastStatusTs = Number(card.statusCountsUpdatedAt || 0)
+          if (lastStatusTs <= requestTs) {
+            card.statusCounts = statusCounts
+            card.statusCountsUpdatedAt = requestTs
+          }
+          const lastTs = Number(card.reliabilityCountsUpdatedAt || 0)
+          if (lastTs <= requestTs) {
+            card.reliabilityCounts = reliabilityCounts
+            card.reliabilityCountsUpdatedAt = requestTs
+          }
         }
       } catch (e) {
         console.error(`Failed to load status/reliability for demand ${id}:`, e)
-        const emptyStatus = { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-        const emptyRel = { reliable: 0, unreliable: 0 }
-        statusCountsCache.set(id, emptyStatus)
-        reliabilityCountsCache.set(id, emptyRel)
-        statusCountsMap.set(id, emptyStatus)
-        reliabilityCountsMap.set(id, emptyRel)
+        // 不要把“失败”缓存成 0：否则从详情返回/刷新时可能被短暂网络/后端抖动锁死为 0（60s TTL）
+        // 这里保持缺省，让下一次 enrich/refresh 有机会重新拉取服务端真实 counts。
+        statusCountsCache.delete(id)
+        reliabilityCountsCache.delete(id)
+        statusCountsMap.delete(id)
+        reliabilityCountsMap.delete(id)
       }
     }).catch(() => {})
   }
@@ -950,28 +1493,34 @@ const enrichCards = async (cards: DemandCard[]) => {
   if (authUid) {
     await Promise.all(
       cards.map(async (card) => {
-        card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-        card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
+        const key = getInteractionId(card)
+        card.statusCounts = statusCountsMap.get(key) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+        card.reliabilityCounts = reliabilityCountsMap.get(key) || { reliable: 0, unreliable: 0 }
         try {
           const [userStatuses, userReliability] = await Promise.all([
-            getUserDemandStatuses(card.id, authUid),
-            getUserDemandReliability(card.id, authUid),
+            getUserDemandStatuses(key, authUid),
+            getUserDemandReliability(key, authUid),
           ])
           card.userStatuses = userStatuses || []
-          card.userReliability = userReliability
+          const override = getReliabilityOverride(key)
+          const normalized = userReliability === true ? true : userReliability === false ? false : null
+          card.userReliability = override !== undefined ? override : normalized
         } catch (e) {
           console.error(`Failed to load user status/reliability for demand ${card.id}:`, e)
           card.userStatuses = []
-          card.userReliability = null
+          const override = getReliabilityOverride(key)
+          card.userReliability = override !== undefined ? override : null
         }
       })
     )
   } else {
     cards.forEach((card) => {
-      card.statusCounts = statusCountsMap.get(card.id) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-      card.reliabilityCounts = reliabilityCountsMap.get(card.id) || { reliable: 0, unreliable: 0 }
+      const key = getInteractionId(card)
+      card.statusCounts = statusCountsMap.get(key) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+      card.reliabilityCounts = reliabilityCountsMap.get(key) || { reliable: 0, unreliable: 0 }
       card.userStatuses = []
-      card.userReliability = null
+      const override = getReliabilityOverride(key)
+      card.userReliability = override !== undefined ? override : null
     })
   }
 
@@ -980,8 +1529,10 @@ const enrichCards = async (cards: DemandCard[]) => {
     favoriteSet = await checkFavoritesStatus(demandIds)
   }
   cards.forEach((card) => {
-    card.isFavorited = favoriteSet.has(card.id)
+    const key = getInteractionId(card)
+    card.isFavorited = favoriteSet.has(key)
     card.favoriting = false
+    card.reliabilityBusy = false
   })
 
   await computeRelatedCounts(cards)
@@ -1114,11 +1665,12 @@ const loadFromCloud = async (opts?: { append?: boolean }) => {
         for (const t of base) {
           if (!t) continue
           if (drop.has(t)) continue
+          if (isBucketLikeTag(t)) continue
           if (out.includes(t)) continue
           out.push(t)
           if (out.length >= 6) break
         }
-        return out
+        return sanitizeExtraTags(out)
       })()
 
       return mapToCard(
@@ -1205,27 +1757,6 @@ const loadMore = async () => {
 
 const lastNearBottomTriggerAt = ref(0)
 
-const handleListScroll = (e: any) => {
-  // H5 下 scrolltolower 在部分情况下不触发，这里做兜底：接近底部时主动触发 loadMore
-  if (!hasMore.value) return
-  if (loading.value || loadingMore.value) return
-
-  const detail = (e && (e.detail || e.target)) || {}
-  const scrollTop = Number(detail.scrollTop || 0)
-  const scrollHeight = Number(detail.scrollHeight || 0)
-  const clientHeight = Number(detail.clientHeight || detail.offsetHeight || 0)
-
-  if (!scrollHeight || !clientHeight) return
-
-  const nearBottom = scrollTop + clientHeight >= scrollHeight - 200
-  if (!nearBottom) return
-
-  const now = Date.now()
-  if (now - lastNearBottomTriggerAt.value < 1200) return
-  lastNearBottomTriggerAt.value = now
-  loadMore()
-}
-
 const loadCommentsForDemands = async () => {
   try {
     await ensureLogin()
@@ -1306,7 +1837,7 @@ const refreshAuthState = async () => {
     const state: any = await ensureLogin()
     const nextGuest = !!(state && isGuestUser(state.user))
     isGuest.value = nextGuest
-    isAdmin.value = isAdminUid(String((state && state.user && (state.user as any).uid) || '').trim())
+    isAdmin.value = isLocalhostRuntime() || isAdminUid(String((state && state.user && (state.user as any).uid) || '').trim())
 
     // When switching from guest -> logged-in, refresh list so favorites/status become interactive.
     if (prevGuest && !nextGuest) {
@@ -1321,10 +1852,46 @@ const refreshAuthState = async () => {
 // 页面显示时刷新数据（从登录/发布页返回时会触发）
 onShow(async () => {
   await refreshAuthState()
-  // 如果已经有数据，刷新列表（避免首次加载时重复加载）
-  if (allDemands.value.length > 0 || !loading.value) {
-    loadFromCloud({ append: false })
+  // 从详情/个人中心返回时：即使页面被销毁重建，也要刷新一次，避免回到初始态
+  await loadFromCloud({ append: false })
+
+  // 强制校准近期交互过的卡片（避免边框/底色/数字被重置）
+  const touchedIds = getTouchedReliabilityDemandIds()
+  const touchedTs = getTouchedReliabilityTs()
+
+  // 若“详情页”发生了新的评价操作，但列表页仍残留更旧的本地 override，会导致高亮与详情不一致。
+  // 这里仅在 override 时间早于 touched 时间时，清理 override，让服务端真实状态覆盖。
+  try {
+    for (const id of touchedIds.slice(0, 50)) {
+      const key = String(id || '').trim()
+      if (!key) continue
+      const hit = reliabilityOverrideCache.get(key)
+      if (hit && touchedTs && hit.ts && hit.ts < touchedTs) {
+        reliabilityOverrideCache.delete(key)
+        storageRemove(`${RELIABILITY_OVERRIDE_STORAGE_PREFIX}${key}`)
+      }
+    }
+  } catch {}
+
+  const matchTouchedCard = (card: DemandCard, id: string): boolean => {
+    const key = String(id || '').trim()
+    if (!key) return false
+    const inter = String(getInteractionId(card) || '').trim()
+    const raw = String((card as any).canonical_raw_id || '').trim()
+    const cid = String((card as any).id || '').trim()
+    return inter === key || raw === key || cid === key
   }
+
+  const candidates = touchedIds
+    .map((id) => allDemands.value.find((c) => matchTouchedCard(c, id)))
+    .filter(Boolean) as DemandCard[]
+  await Promise.all(candidates.slice(0, 20).map((c) => refreshCardReliabilityData(c)))
+
+  const touchedStatusIds = getTouchedStatusDemandIds()
+  const statusCandidates = touchedStatusIds
+    .map((id) => allDemands.value.find((c) => matchTouchedCard(c, id)))
+    .filter(Boolean) as DemandCard[]
+  await Promise.all(statusCandidates.slice(0, 20).map((c) => refreshCardStatusData(c)))
 })
 
 const parseCreatedAtTs = (v: any): number | null => {
@@ -1460,10 +2027,15 @@ const filteredDemands = computed(() => {
         return isOverseasCity(String(d.city || ''))
       }
       const a = normalizeCityToken(active)
-      const c = normalizeCityToken(String(d.city || ''))
       if (!a) return true
-      if (!c) return false
-      return c === a
+      const rawCity = String(d.city || '').trim()
+      if (!rawCity) return false
+      const tokens = rawCity
+        .split('/')
+        .map((x) => normalizeCityToken(x))
+        .filter(Boolean)
+      if (!tokens.length) return false
+      return tokens.includes(a)
     })()
 
     const byRemote =
@@ -1526,7 +2098,37 @@ const filteredDemands = computed(() => {
     return created || 0
   }
 
-  return list.slice().sort((a, b) => pickSortTs(b as any) - pickSortTs(a as any))
+  const dayKey = (ts: number): string => {
+    try {
+      const d = new Date(ts)
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${dd}`
+    } catch {
+      return ''
+    }
+  }
+
+  return list.slice().sort((a, b) => {
+    const ta = pickSortTs(a as any)
+    const tb = pickSortTs(b as any)
+    if (tb !== ta) return tb - ta
+
+    // 方案 A：同一天内用 richness_score 作为二级排序（越丰富越靠前）
+    const da = dayKey(ta)
+    const db = dayKey(tb)
+    if (da && db && da === db) {
+      const ra = Number((a as any).richness_score || 0)
+      const rb = Number((b as any).richness_score || 0)
+      if (rb !== ra) return rb - ra
+    }
+
+    // 稳定兜底：按 id 倒序（避免完全相等时排序不稳定）
+    const ida = String((a as any).id || '')
+    const idb = String((b as any).id || '')
+    return idb.localeCompare(ida)
+  })
 });
 
 // 搜索处理
@@ -1540,50 +2142,60 @@ const handleSearch = (e?: any) => {
 const triggerSearch = () => {
   try {
     uni.hideKeyboard()
+    reloadFromCloud()
   } catch {
     return
   }
 }
 
-// 清除搜索
 const clearSearch = () => {
   searchKeyword.value = ''
+  reloadFromCloud()
 }
 
 const setModule = (code: string) => {
-  activeModule.value = code;
-};
+  activeModule.value = code
+  reloadFromCloud()
+}
+
+const setCity = (city: string) => {
+  activeCity.value = city
+  reloadFromCloud()
+}
 
 const setTimeRange = (val: TimeRange) => {
   activeTimeRange.value = val
+  reloadFromCloud()
 }
 
 const setTimeField = (val: TimeField) => {
   activeTimeField.value = val
+  reloadFromCloud()
 }
 
-const setCity = (city: string) => {
-  activeCity.value = city;
-};
-
-const setRemoteMode = (val: 'ALL' | 'REMOTE' | 'ONSITE') => {
+const setRemoteMode = (val: RemoteMode) => {
   activeRemoteMode.value = val
+  reloadFromCloud()
 }
 
 const setCooperationMode = (val: CooperationModeOpt) => {
   activeCooperationMode.value = val
+  reloadFromCloud()
 }
 
-const setYearRange = (val: 'ALL' | '0-3' | '4-6' | '7-10' | '10+') => {
+const setYearRange = (val: YearRange) => {
   activeYearRange.value = val
+  reloadFromCloud()
 }
 
-const setDurationRange = (val: 'ALL' | 'SHORT' | 'MID' | 'LONG') => {
+const setDurationRange = (val: DurationRange) => {
   activeDurationRange.value = val
+  reloadFromCloud()
 }
 
-const setLanguage = (val: 'ALL' | 'EN' | 'JP') => {
+const setLanguage = (val: LanguageOpt) => {
   activeLanguage.value = val
+  reloadFromCloud()
 }
 
 const goDetail = (card: DemandCard) => {
@@ -1634,6 +2246,10 @@ const goToDetailFromComment = (demandId: string) => {
   uni.navigateTo({ url: `/pages/demand/detail?uniqueId=${uid}` })
 }
 
+const goBack = () => {
+  safeNavigateBack({ delta: 1 })
+}
+
 const goToPublish = async () => {
   try {
     await requireNonGuest()
@@ -1672,15 +2288,18 @@ const toggleCardFavorite = async (card: DemandCard) => {
   if (!card?.id) return
   if (card.favoriting) return
 
+  const key = getInteractionId(card)
+  if (!key) return
+
   card.favoriting = true
   try {
     await requireNonGuest()
     if (card.isFavorited) {
-      await removeFavorite(card.id)
+      await removeFavorite(key)
       card.isFavorited = false
       uni.showToast({ title: '已取消收藏', icon: 'none' })
     } else {
-      await addFavorite(card.id)
+      await addFavorite(key)
       card.isFavorited = true
       uni.showToast({ title: '已收藏', icon: 'success' })
     }
@@ -1706,25 +2325,32 @@ const toggleCardFavorite = async (card: DemandCard) => {
   }
 }
 
-// 状态选项配置
-const statusOptions = [
-  { value: 'applied', label: '已投递', icon: '📤', confirmMessage: '是否确认已投递？' },
-  { value: 'interviewed', label: '已面试', icon: '💼', confirmMessage: '是否确认已面试？' },
-  { value: 'onboarded', label: '已到岗', icon: '✅', confirmMessage: '是否确认已到岗？将显示您的账号昵称。' },
-  { value: 'closed', label: '已关闭', icon: '🔒', confirmMessage: '是否确认关闭需求？将显示您的账号昵称。' },
-]
-
 // 处理列表页状态点击
 const handleCardStatusClick = async (card: DemandCard, status: string) => {
+  if (!card?.id) return
+  if (card.statusBusy) return
+
+  const key = getInteractionId(card)
+  if (!key) return
+
+  const statusOption = statusOptions.find(s => s.value === status)
+  if (!statusOption) return
+
+  const prevUserStatuses = Array.isArray(card.userStatuses) ? [...card.userStatuses] : []
+  const alreadyMarked = prevUserStatuses.includes(status)
+
+  // 点击即反馈：先做乐观高亮/取消高亮（鉴权/接口失败再回滚）
+  const has = (card.userStatuses || []).includes(status)
+  const next = has ? (card.userStatuses || []).filter((x) => x !== status) : [...(card.userStatuses || []), status]
+  card.userStatuses = next
+  setStatusOverride(key, next)
+  touchStatusDemandId(key)
+
   try {
+    card.statusBusy = true
     await requireNonGuest()
     const user = await getOrCreateUserProfile()
-    
-    const statusOption = statusOptions.find(s => s.value === status)
-    if (!statusOption) return
-    
-    const alreadyMarked = card.userStatuses?.includes(status)
-    
+
     // 取消逻辑
     if (alreadyMarked) {
       if (status === 'onboarded' || status === 'closed') {
@@ -1738,10 +2364,14 @@ const handleCardStatusClick = async (card: DemandCard, status: string) => {
             fail: () => resolve(false),
           })
         })
-        if (!confirmCancel) return
+        if (!confirmCancel) {
+          card.userStatuses = prevUserStatuses
+          setStatusOverride(key, prevUserStatuses)
+          return
+        }
       }
-      
-      await unmarkDemandStatus(card.id, status as any, user.uid)
+      await unmarkDemandStatus(key, status as any, user.uid)
+      refreshCardStatusData(card).catch(() => {})
     } else {
       // 仅“已到岗(onboarded)”和“需求关闭(closed)”需要确认
       if (status === 'onboarded' || status === 'closed') {
@@ -1756,77 +2386,183 @@ const handleCardStatusClick = async (card: DemandCard, status: string) => {
           })
         })
         
-        if (!confirm) return
+        if (!confirm) {
+          card.userStatuses = prevUserStatuses
+          setStatusOverride(key, prevUserStatuses)
+          return
+        }
       }
-      
-      await markDemandStatus(card.id, status as any, user.nickname || '匿名用户')
+      await markDemandStatus(key, status as any, user.nickname || '匿名用户')
+
+      // 标记/修改后以服务端为准刷新 counts
+      refreshCardStatusData(card).catch(() => {})
+
+      // 增加积分逻辑（不阻塞 UI：积分更新失败不影响标记本身）
+      const points = getRewardPoints('markDemandStatus')
+      if (points > 0) {
+        updateUserProfile({}, { addPoints: points }).catch(() => {})
+      }
     }
-    
-    // 等待数据库更新
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // 刷新该卡片的状态数据
-    await refreshCardStatusData(card)
-    
-    uni.showToast({ title: alreadyMarked ? '状态已取消' : '状态标记成功', icon: 'none' })
+
+    // 异步校准：后台统计可能延迟，做重试刷新以避免“详情=2 列表=1”
+    const refreshStatusWithRetry = async () => {
+      const startTs = Date.now()
+      const baseCounts = JSON.stringify(card.statusCounts || {})
+      const baseUser = JSON.stringify(card.userStatuses || [])
+      const tries = [200, 400, 800, 1200, 1800, 2600, 3400]
+      for (let i = 0; i < tries.length; i++) {
+        await new Promise((r) => setTimeout(r, tries[i]))
+        await refreshCardStatusData(card)
+        // counts 或 userStatuses 任一发生变化即可视为“已同步到服务端结果”（避免“只变用户态不变 counts”时重试失效）
+        const nextCounts = JSON.stringify(card.statusCounts || {})
+        const nextUser = JSON.stringify(card.userStatuses || [])
+        if (
+          (card as any).statusCountsUpdatedAt &&
+          (card as any).statusCountsUpdatedAt >= startTs &&
+          (nextCounts !== baseCounts || nextUser !== baseUser)
+        ) {
+          return
+        }
+      }
+    }
+    refreshStatusWithRetry().catch(() => {})
+
+    const points = !alreadyMarked ? getRewardPoints('markDemandStatus') : 0
+    if (!alreadyMarked && points > 0) {
+      uni.showToast({ title: `标记成功，积分 +${points}`, icon: 'success' })
+    } else {
+      uni.showToast({ title: alreadyMarked ? '状态已取消' : '状态标记成功', icon: 'none' })
+    }
   } catch (e: any) {
     console.error('Failed to mark/unmark status:', e)
+    // 失败回滚（尽量不影响用户继续操作）
+    try {
+      card.userStatuses = prevUserStatuses
+      setStatusOverride(key, prevUserStatuses) // Use interaction key instead of card.id
+    } catch {}
     const msg = String(e?.message || '')
     if (msg.includes('GUEST_READONLY')) {
       return
     }
     uni.showToast({ title: msg || '标记失败', icon: 'none' })
+  } finally {
+    card.statusBusy = false
   }
 }
 
 // 处理列表页评价点击
 const handleCardReliabilityClick = async (card: DemandCard, reliable: boolean) => {
+  if (!card?.id) return
+  if (card.reliabilityBusy) return
+
+  const key = getInteractionId(card)
+  if (!key) return
+
+  const prevUserReliability = card.userReliability
+  const prevReliabilityCounts = { ...(card.reliabilityCounts || {}) } as any
+  const prevOverride = getReliabilityOverride(key)
+
+  // 点击即反馈：先做乐观高亮/取消高亮（鉴权/接口失败再回滚）
+  const nextUserReliability = card.userReliability === reliable ? null : reliable
+  card.userReliability = nextUserReliability
+  setReliabilityOverride(key, nextUserReliability)
+  touchReliabilityDemandId(key)
+
   try {
+    card.reliabilityBusy = true
     await requireNonGuest()
     const user = await getOrCreateUserProfile()
     
     // 检查是否已评价 -> 同评价则取消
-    if (card.userReliability === reliable) {
-      await unmarkDemandReliability(card.id, user.uid)
-      await new Promise(resolve => setTimeout(resolve, 300))
-      await refreshCardReliabilityData(card)
-      uni.showToast({ title: '评价已取消', icon: 'none' })
-      return
+    if (nextUserReliability === null) {
+      await unmarkDemandReliability(key, user.uid)
+
+      // 取消评价：扣回积分
+      const cancelPoints = getRewardPoints('markDemandReliability')
+      if (cancelPoints > 0) {
+        updateUserProfile({}, { addPoints: -cancelPoints }).catch(() => {})
+      }
+
+      // 取消后以服务端为准刷新 counts
+      refreshCardReliabilityData(card).catch(() => {})
+
+      if (cancelPoints > 0) {
+        uni.showToast({ title: `评价已取消，积分 -${cancelPoints}`, icon: 'none' })
+      } else {
+        uni.showToast({ title: '评价已取消', icon: 'none' })
+      }
+    } else {
+      await markDemandReliability(key, reliable, user.nickname || '匿名用户')
+
+      // 只有“首次评价（从 null -> true/false）”才加积分；从 true<->false 视为修改，不重复加分
+      const rewardPoints = prevUserReliability === null ? getRewardPoints('markDemandReliability') : 0
+      if (rewardPoints > 0) {
+        updateUserProfile({}, { addPoints: rewardPoints }).catch(() => {})
+        uni.showToast({ title: `评价成功，积分 +${rewardPoints}`, icon: 'success' })
+      } else {
+        uni.showToast({ title: reliable ? '已标记为靠谱' : '已标记为不靠谱', icon: 'none' })
+      }
+
+      // 标记/修改后以服务端为准刷新 counts
+      refreshCardReliabilityData(card).catch(() => {})
     }
-    
-    await markDemandReliability(card.id, reliable, user.nickname || '匿名用户')
-    
-    // 等待数据库更新
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // 刷新该卡片的评价数据
-    await refreshCardReliabilityData(card)
-    
-    uni.showToast({ title: reliable ? '已标记为靠谱' : '已标记为不靠谱', icon: 'none' })
+
+    // 异步校准：做重试刷新，确保列表最终与详情一致
+    const refreshRelWithRetry = async () => {
+      const startTs = Date.now()
+      const baseCounts = JSON.stringify(card.reliabilityCounts || {})
+      const baseUser = JSON.stringify(card.userReliability)
+      const tries = [200, 400, 800, 1200, 1800, 2600, 3400, 4200, 5200, 6200]
+      for (let i = 0; i < tries.length; i++) {
+        await new Promise((r) => setTimeout(r, tries[i]))
+        await refreshCardReliabilityData(card)
+        const nextCounts = JSON.stringify(card.reliabilityCounts || {})
+        const nextUser = JSON.stringify(card.userReliability)
+        if (
+          (card as any).reliabilityCountsUpdatedAt &&
+          (card as any).reliabilityCountsUpdatedAt >= startTs &&
+          (nextCounts !== baseCounts || nextUser !== baseUser)
+        ) {
+          return
+        }
+      }
+    }
+    refreshRelWithRetry().catch(() => {})
   } catch (e: any) {
     console.error('Failed to mark reliability:', e)
+    // 失败回滚
+    try {
+      card.userReliability = prevUserReliability
+      card.reliabilityCounts = prevReliabilityCounts
+      if (prevOverride !== undefined) setReliabilityOverride(key, prevOverride)
+    } catch {}
     const msg = String(e?.message || '')
     if (msg.includes('GUEST_READONLY')) {
       return
     }
     uni.showToast({ title: msg || '评价失败', icon: 'none' })
+  } finally {
+    card.reliabilityBusy = false
   }
 }
 
 // 刷新单个卡片的状态数据
 const refreshCardStatusData = async (card: DemandCard) => {
   try {
-    const counts = await getDemandStatusCounts(card.id)
+    const key = getInteractionId(card)
+    const counts = await getDemandStatusCounts(key)
     card.statusCounts = {
       applied: counts.applied || 0,
       interviewed: counts.interviewed || 0,
       onboarded: counts.onboarded || 0,
       closed: counts.closed || 0,
     }
+    card.statusCountsUpdatedAt = Date.now()
     
     const user = await getOrCreateUserProfile()
-    const userStatusesList = await getUserDemandStatuses(card.id, user.uid)
-    card.userStatuses = userStatusesList || []
+    const userStatusesList = await getUserDemandStatuses(key, user.uid)
+    const override = getStatusOverride(key)
+    card.userStatuses = override !== undefined ? override : (userStatusesList || [])
   } catch (e) {
     console.error('Failed to refresh card status data:', e)
   }
@@ -1835,15 +2571,23 @@ const refreshCardStatusData = async (card: DemandCard) => {
 // 刷新单个卡片的评价数据
 const refreshCardReliabilityData = async (card: DemandCard) => {
   try {
-    const counts = await getDemandReliabilityCounts(card.id)
+    const key = getInteractionId(card)
+    const counts = await getDemandReliabilityCounts(key)
     card.reliabilityCounts = {
       reliable: counts.reliable || 0,
       unreliable: counts.unreliable || 0,
     }
+    card.reliabilityCountsUpdatedAt = Date.now()
     
     const user = await getOrCreateUserProfile()
-    const userRel = await getUserDemandReliability(card.id, user.uid)
-    card.userReliability = userRel
+    const userRel = await getUserDemandReliability(key, user.uid)
+    const override = getReliabilityOverride(key)
+    // 若近期有本地 override，则优先保留，避免后端延迟覆盖导致高亮“闪退”
+    if (override !== undefined) {
+      card.userReliability = override
+    } else {
+      card.userReliability = userRel === true ? true : userRel === false ? false : null
+    }
   } catch (e) {
     console.error('Failed to refresh card reliability data:', e)
   }
@@ -1909,563 +2653,485 @@ const handleRefreshTags = async () => {
 </script>
 
 <style lang="scss" scoped>
-.page {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 16rpx 24rpx 24rpx;
-  background: linear-gradient(135deg, #0b1924 0%, #1b2a38 45%, #101820 100%);
-}
-
-.page-header {
-  padding: 24rpx 8rpx 8rpx;
-  color: #f5f5f5;
-}
-
-.page-title-row {
-  flex-direction: row;
-  align-items: center;
-  display: flex;
-  margin-bottom: 8rpx;
-  justify-content: space-between;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-}
-
-.icon-btn {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 999rpx;
-  background: rgba(245, 241, 232, 0.10);
-  border: 2rpx solid rgba(245, 241, 232, 0.16);
-  margin-left: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.refresh-btn {
-  padding: 12rpx 24rpx;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border-radius: 20rpx;
-  box-shadow: 0 4rpx 12rpx rgba(59, 130, 246, 0.3);
-  margin-right: 12rpx;
-}
-
-.refresh-btn--loading {
-  opacity: 0.7;
-  background: rgba(59, 130, 246, 0.5);
-}
-
-.refresh-btn-text {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.publish-btn {
-  padding: 12rpx 24rpx;
-  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-  border-radius: 20rpx;
-  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.3);
-}
-
-.publish-btn-text {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.badge {
-  font-size: 20rpx;
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  border-width: 2rpx;
-  border-style: solid;
-  border-color: rgba(255, 255, 255, 0.18);
-  margin-right: 12rpx;
-  color: #f8f3e6;
-}
-
-.page-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  letter-spacing: 1rpx;
-  color: #fdf9f0;
-}
-
-.page-subtitle {
-  font-size: 24rpx;
-  color: #c5d0dd;
-  margin-top: 4rpx;
-}
-
-.search-box {
-  position: relative;
-  margin: 16rpx 0;
-  padding: 0 20rpx;
-  z-index: 9999;
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.search-input {
-  flex: 1;
-  width: auto;
-  padding: 20rpx 72rpx 20rpx 24rpx;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1rpx solid rgba(244, 162, 89, 0.65);
-  border-radius: 24rpx;
-  font-size: 26rpx;
-  color: #e4edf7;
-  box-sizing: border-box;
-  pointer-events: auto;
-}
-
-.search-input:focus {
-  border-color: #f4a259;
-}
-
-.search-input :deep(input),
-.search-input :deep(.uni-input-input) {
-  width: 100%;
-  height: 100%;
-  min-height: 44rpx;
-  pointer-events: auto;
-  background: transparent;
-  border: 0;
-  outline: none;
-  color: inherit;
-}
-
-.search-input :deep(.uni-input-placeholder) {
-  color: #94a3b8;
-}
-
-.search-action {
-  position: relative;
-  height: 44rpx;
-  padding: 0 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 18rpx;
-  background: rgba(59, 130, 246, 0.25);
-  border: 1rpx solid rgba(59, 130, 246, 0.45);
-  z-index: 3;
-  pointer-events: auto;
-}
-
-.search-action-text {
-  font-size: 22rpx;
-  color: #bfdbfe;
-  font-weight: 600;
-}
-
-.search-input::placeholder {
-  color: #94a3b8;
-}
-
-.search-clear {
-  position: absolute;
-  right: 160rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40rpx;
-  height: 40rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  z-index: 2;
-  pointer-events: auto;
-}
-
-.search-clear-text {
-  font-size: 24rpx;
-  color: #e4edf7;
-  font-weight: bold;
-}
-
-.filter-strip {
-  margin-top: 16rpx;
-  padding: 12rpx 0;
-  border-radius: 18rpx;
-  background-color: rgba(10, 16, 25, 0.9);
-  box-shadow: 0 16rpx 40rpx rgba(0, 0, 0, 0.45);
-  white-space: nowrap;
-  position: relative;
-  z-index: 1;
-}
-
-.card-comments-strip {
-  margin-top: 10rpx;
-}
-
-.card-comments-list {
-  flex-direction: row;
-  display: flex;
-}
-
-.card-comment-pill {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  padding: 6rpx 14rpx;
-  margin-right: 12rpx;
-  border-radius: 999rpx;
-  background-color: rgba(15, 23, 42, 0.9);
-}
-
-.card-comment-likes {
-  font-size: 20rpx;
-  color: #fbbf24;
-  margin-right: 8rpx;
-}
-
-.card-comment-dislikes {
-  font-size: 20rpx;
-  color: #f97373;
-  margin-right: 8rpx;
-}
-
-.card-comment-text {
-  font-size: 20rpx;
-  color: #e5e7eb;
-  max-width: 440rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.filter-group {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 24rpx;
-}
-
-.filter-label {
-  font-size: 22rpx;
-  color: #8fa2ba;
-  margin-right: 12rpx;
-}
-
-.filter-chips {
-  flex-direction: row;
-  display: flex;
-}
-
-.filter-chips.tight .chip {
-  margin-right: 8rpx;
-}
-
-.chip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4rpx 14rpx;
-  border-radius: 999rpx;
-  background-color: rgba(25, 58, 86, 0.9);
-  margin-right: 12rpx;
-}
-
-.chip--active {
-  background: linear-gradient(135deg, #ff6b35 0%, #f4a259 100%);
-}
-
-.chip--ghost {
-  background-color: transparent;
-  border-width: 2rpx;
-  border-style: solid;
-  border-color: rgba(143, 162, 186, 0.55);
-}
-
-.chip--active-ghost {
-  border-color: #f4a259;
-  background-color: rgba(244, 162, 89, 0.08);
-}
-
-.chip-text {
-  font-size: 22rpx;
-  color: #edf1f7;
-  white-space: nowrap;
-}
-
-.card-list {
-  flex: 1;
-  height: 0;
-  margin-top: 20rpx;
-  position: relative;
-  z-index: 0;
-}
-
-.list-footer {
-  padding: 14rpx 0 6rpx;
-  display: flex;
-  justify-content: center;
-}
-
-.list-footer-text {
-  font-size: 22rpx;
-  color: rgba(235, 241, 247, 0.55);
-}
-
-.demand-card {
-  border-radius: 24rpx;
-  padding: 20rpx 20rpx 16rpx;
-  margin-bottom: 18rpx;
-  background: linear-gradient(145deg, #111c28 0%, #141f2c 50%, #0b151f 100%);
-  box-shadow:
-    0 22rpx 55rpx rgba(0, 0, 0, 0.65),
-    0 0 0 1rpx rgba(255, 255, 255, 0.02);
-}
-
-.card-raw-text {
-  font-size: 24rpx;
-  line-height: 1.6;
-  color: #e4edf7;
-}
-
-.card-tags {
-  flex-direction: row;
-  flex-wrap: wrap;
-  display: flex;
-  margin-top: 14rpx;
-}
-
-.tag {
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  margin-right: 10rpx;
-  margin-bottom: 6rpx;
-  background-color: rgba(35, 57, 80, 0.9);
-}
-
-.tag--primary {
-  background-color: rgba(244, 162, 89, 0.22);
-}
-
-.tag--accent {
-  background-color: rgba(51, 130, 119, 0.32);
-}
-
-.tag--rate {
-  background: rgba(34, 197, 94, 0.18);
-  border: 1rpx solid rgba(34, 197, 94, 0.35);
-  color: #22c55e;
-}
-
-.tag--related {
-  background: rgba(245, 158, 11, 0.18);
-  border: 1rpx solid rgba(245, 158, 11, 0.35);
-  color: #f59e0b;
-}
-
-.card-status-bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-top: 12rpx;
-  padding: 8rpx 0;
-}
-
-.card-reliability-bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-top: 12rpx;
-  padding: 8rpx 0;
-}
-
-.card-favorite-btn {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 60rpx;
-  height: 56rpx;
-  padding: 0 14rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.1);
-}
-
-.card-favorite-btn--active {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.35);
-}
-
-.card-favorite-icon {
-  font-size: 26rpx;
-}
-
-.card-status-item,
-.card-reliability-item {
-  display: flex;
-  align-items: center;
-  padding: 8rpx 16rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.1);
-  border-radius: 16rpx;
-  font-size: 22rpx;
-  color: #94a3b8;
-  transition: all 0.3s;
-}
-
-.card-status-item--active {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #3b82f6;
-  color: #60a5fa;
-}
-
-.card-status-item--onboarded.card-status-item--active {
-  background: rgba(34, 197, 94, 0.22);
-  border-color: #22c55e;
-  color: #86efac;
-}
-
-.card-status-item--closed.card-status-item--active {
-  background: rgba(239, 68, 68, 0.22);
-  border-color: #ef4444;
-  color: #fecdd3;
-}
-
-.guest-disabled {
-  opacity: 0.45;
-  filter: grayscale(1);
-}
-
-.card-reliability-item--active.card-reliability-item--reliable {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: #22c55e;
-  color: #4ade80;
-}
-
-.card-reliability-item--active.card-reliability-item--unreliable {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #f87171;
-}
-
-.card-status-icon,
-.card-reliability-icon {
-  margin-right: 6rpx;
-  font-size: 24rpx;
-}
-
-.card-status-label,
-.card-reliability-label {
-  margin-right: 4rpx;
-  font-size: 22rpx;
-}
-
-.card-status-count,
-.card-reliability-count {
-  font-size: 20rpx;
-  color: #94a3b8;
-}
-
-.tag text {
-  font-size: 20rpx;
-  color: #dfe7f1;
-}
-
-.tag--rate text {
-  color: #ffc107;
-  font-weight: 600;
-}
-
-.card-footer {
-  margin-top: 16rpx;
-  padding-top: 12rpx;
-  border-top-width: 1rpx;
-  border-top-style: dashed;
-  border-top-color: rgba(111, 136, 164, 0.6);
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  display: flex;
-}
-
-.provider {
-  flex-direction: row;
-  align-items: center;
-  display: flex;
-}
-
-.avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 999rpx;
-  margin-right: 14rpx;
-  overflow: hidden;
-  background: radial-gradient(circle at 30% 20%, #f4a259 0%, #ff6b35 35%, #1b2a38 85%);
-  position: relative;
-}
-
-.avatar-mask {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 12rpx;
-  transform: translate(-50%, -50%);
-  border-width: 3rpx;
-  border-style: solid;
-  border-color: rgba(15, 23, 36, 0.9);
-  background:
-    linear-gradient(135deg, #f5f0e6 0%, #d9e2ec 100%);
-}
-
-.provider-text {
-  max-width: 380rpx;
-}
-
-.provider-name {
-  font-size: 22rpx;
-  color: #f1f5f9;
-}
-
-.provider-meta {
-  font-size: 20rpx;
-  color: #97a6ba;
-  margin-top: 2rpx;
-}
-
-.unlock-hint {
-  padding: 6rpx 16rpx;
-  border-radius: 999rpx;
-  border-width: 2rpx;
-  border-style: solid;
-  border-color: rgba(244, 162, 89, 0.6);
-  background-color: rgba(244, 162, 89, 0.08);
-}
-
-.unlock-hint-text {
-   font-size: 20rpx;
-   color: #f4a259;
- }
-
- .similar-hint {
-   margin-top: 12rpx;
-   padding: 10rpx 16rpx;
-   background: rgba(59, 130, 246, 0.15);
-   border-radius: 8rpx;
-   border: 1rpx solid rgba(59, 130, 246, 0.3);
- }
-
- .similar-hint-text {
-   font-size: 22rpx;
-   color: #3b82f6;
-   font-weight: 500;
- }
- </style>
-
-
+  .page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 0;
+    background: #F5F1E8;
+  }
+  
+  .page-header-unified {
+    background: #0B1924;
+    height: 88rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 1010;
+    width: 100%;
+  }
+  
+  .page-header-content {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0 24rpx;
+  }
+  
+  .header-left,
+  .header-right {
+    width: 120rpx;
+    display: flex;
+    align-items: center;
+  }
+  
+  .header-right {
+    justify-content: flex-end;
+  }
+  
+  .page-header-title {
+    color: #FFFFFF;
+    font-size: 32rpx;
+    font-weight: 800;
+  }
+  
+  .sticky-header {
+    position: sticky;
+    top: 88rpx;
+    z-index: 1000;
+    background: #F5F1E8;
+    padding: 16rpx 24rpx 12rpx;
+    border-bottom: 1rpx solid rgba(15, 23, 42, 0.06);
+  }
+  
+  .header-main-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16rpx;
+  }
+  
+  .search-box {
+    flex: 1;
+    height: 72rpx;
+    background: #FFFFFF;
+    border-radius: 14rpx;
+    display: flex;
+    align-items: center;
+    padding: 0 24rpx;
+    border: 1rpx solid rgba(15, 23, 42, 0.08);
+  }
+  
+  .search-input {
+    flex: 1;
+    height: 100%;
+    font-size: 26rpx;
+    color: #0f172a;
+  }
+
+  .search-clear {
+    width: 52rpx;
+    height: 52rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 26rpx;
+    background: #F3F4F6;
+  }
+
+  .search-clear-text {
+    font-size: 26rpx;
+    color: #64748B;
+    line-height: 1;
+  }
+
+  .header-btns {
+    display: flex;
+    align-items: center;
+  }
+  
+  .fold-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    font-size: 24rpx;
+    color: #FFFFFF;
+    background: #D97706;
+    padding: 0 18rpx;
+    height: 72rpx;
+    border-radius: 14rpx;
+  }
+
+  .fold-toggle-btn--large {
+    width: 140rpx;
+    justify-content: center;
+  }
+  
+  .filter-panel {
+    margin-top: 20rpx;
+    display: flex;
+    flex-direction: column;
+    background: #FFFFFF;
+    border-radius: 16rpx;
+    padding: 16rpx;
+    border: 1rpx solid rgba(15, 23, 42, 0.06);
+  }
+
+  .filter-panel-scroll {
+    max-height: 620rpx;
+    padding-right: 8rpx;
+    background: #FFFFFF;
+  }
+  
+  .filter-section {
+    margin-bottom: 24rpx;
+  }
+  
+  .filter-section-label {
+    font-size: 24rpx;
+    color: #0B1924;
+    font-weight: 800;
+    font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin-bottom: 12rpx;
+    display: block;
+  }
+  
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12rpx;
+  }
+  
+  .panel-chip {
+    padding: 8rpx 20rpx;
+    background: #F3F4F6;
+    border: 1rpx solid rgba(15, 23, 42, 0.06);
+    border-radius: 12rpx;
+    font-size: 22rpx;
+    color: #475569;
+  }
+  
+  .panel-chip--active {
+    background: #D97706;
+    border-color: #D97706;
+    color: #FFFFFF;
+  }
+
+  .panel-chip--active text {
+    color: #FFFFFF;
+  }
+  
+  .folded-summary {
+    margin-top: 12rpx;
+    display: flex;
+    flex-direction: row;
+    gap: 12rpx;
+    overflow-x: auto;
+    background: #F5F1E8;
+    padding: 10rpx 0 2rpx;
+  }
+
+  .summary-scroll {
+    width: 100%;
+  }
+
+  .summary-tags {
+    display: flex;
+    flex-direction: row;
+    gap: 12rpx;
+    padding: 0 8rpx;
+  }
+  
+  .summary-tag {
+    font-size: 20rpx;
+    background: rgba(217, 119, 6, 0.18);
+    border: 1rpx solid rgba(217, 119, 6, 0.35);
+    padding: 6rpx 14rpx;
+    border-radius: 12rpx;
+    white-space: nowrap;
+    color: #B45309;
+  }
+
+  .action-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16rpx 24rpx;
+    background: #F5F1E8;
+    border-bottom: 1rpx solid rgba(15, 23, 42, 0.06);
+  }
+
+  .publish-btn-wrapper {
+    background: #16A34A;
+    padding: 12rpx 26rpx;
+    border-radius: 12rpx;
+  }
+
+  .publish-btn-text {
+    color: #FFFFFF;
+    font-size: 26rpx;
+    font-weight: 700;
+  }
+
+  .header-right-actions {
+    display: flex;
+    align-items: center;
+    gap: 16rpx;
+  }
+
+  .icon-btn {
+    width: 64rpx;
+    height: 64rpx;
+    border-radius: 14rpx;
+    background: #FFFFFF;
+    border: 1rpx solid rgba(15, 23, 42, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .refresh-btn {
+    width: 64rpx;
+    height: 64rpx;
+    border-radius: 14rpx;
+    background: #FFFFFF;
+    border: 1rpx solid rgba(15, 23, 42, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .refresh-btn--loading {
+    opacity: 0.6;
+  }
+
+  .refresh-btn-text {
+    font-size: 24rpx;
+    color: #0f172a;
+  }
+
+  .panel-footer {
+    padding-top: 12rpx;
+  }
+
+  .panel-footer--center {
+    display: flex;
+    justify-content: center;
+  }
+  
+  .card-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 40rpx;
+  }
+  
+  .demand-card {
+    background: #FFFFFF;
+    margin: 20rpx 24rpx;
+    padding: 32rpx;
+    border-radius: 24rpx;
+    box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.06);
+  }
+
+  .card-raw-header {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16rpx;
+  }
+  
+  .card-raw-text {
+    flex: 1;
+    font-size: 28rpx;
+    color: #1e293b;
+    line-height: 1.65;
+  }
+
+  .card-favorite-btn-inline {
+    margin-left: auto;
+    width: 56rpx;
+    height: 56rpx;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 28rpx;
+    background: #F8FAFC;
+    border: 1rpx solid rgba(15, 23, 42, 0.06);
+    flex: none;
+  }
+
+  .card-favorite-btn--active {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.18);
+  }
+
+  .card-favorite-icon {
+    font-size: 28rpx;
+    line-height: 1;
+  }
+  
+  .tags-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12rpx;
+    margin-top: 20rpx;
+  }
+  
+  .tag-item {
+    padding: 6rpx 16rpx;
+    border-radius: 8rpx;
+    background: #F1F5F9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .tag-text {
+    font-size: 22rpx;
+    color: #475569;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  
+  .tag-module { background: #E0F2FE; }
+  .tag-module .tag-text { color: #0369A1; }
+  .tag-city { background: #FEF3C7; }
+  .tag-city .tag-text { color: #92400E; }
+  .tag-duration { background: #F3E8FF; }
+  .tag-duration .tag-text { color: #7E22CE; }
+  .tag-years { background: #DCFCE7; }
+  .tag-years .tag-text { color: #15803D; }
+  .tag-lang { background: #E0F2FE; }
+  .tag-lang .tag-text { color: #0369A1; }
+  .tag-rate { background: #FFE4E6; }
+  .tag-rate .tag-text { color: #BE123C; }
+  .tag-mode { background: #F1F5F9; }
+  .tag-mode .tag-text { color: #475569; }
+  .tag-extra { background: #F8FAFC; }
+  .tag-extra .tag-text { color: #64748B; }
+  
+  .card-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16rpx;
+    margin-top: 24rpx;
+    padding-top: 24rpx;
+    border-top: 1rpx solid #F1F5F9;
+  }
+  
+  .card-status-item {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    padding: 10rpx 20rpx;
+    background: #F8FAFC;
+    border-radius: 12rpx;
+    border: 1rpx solid #E2E8F0;
+  }
+  
+  .card-status-label {
+    font-size: 22rpx;
+    color: #475569;
+    font-weight: 600;
+  }
+  
+  .card-status-count {
+    font-size: 20rpx;
+    color: #94A3B8;
+  }
+
+  .card-status-count--nonzero {
+    color: #64748B;
+    font-weight: 700;
+  }
+
+  .card-status-item--active {
+    border-color: rgb(191, 219, 254);
+    background: rgb(239, 246, 255);
+  }
+
+  .card-status-item--active .card-status-label {
+    color: #2563EB;
+  }
+
+  .card-status-item--active .card-status-count--nonzero {
+    color: #2563EB;
+    font-weight: 800;
+  }
+  
+  .card-reliability-bar {
+    display: flex;
+    gap: 12rpx;
+    margin-top: 16rpx;
+  }
+  
+  .card-reliability-item {
+    display: flex;
+    align-items: center;
+    gap: 8rpx;
+    padding: 8rpx 20rpx;
+    background: #F8FAFC;
+    border-radius: 12rpx;
+    border: 1rpx solid #E2E8F0;
+  }
+  
+  .card-reliability-label {
+    font-size: 22rpx;
+    color: #475569;
+    font-weight: 600;
+  }
+  
+  .card-reliability-count {
+    font-size: 20rpx;
+    color: #94A3B8;
+  }
+
+  .card-reliability-count--nonzero {
+    color: #64748B;
+    font-weight: 700;
+  }
+
+  .card-reliability-item--reliable.card-reliability-item--active {
+    border-color: #A7F3D0;
+    background: #ECFDF5;
+  }
+
+  .card-reliability-item--unreliable.card-reliability-item--active {
+    border-color: rgb(254, 202, 202);
+    background: rgb(254, 242, 242);
+  }
+
+  .card-reliability-item--reliable.card-reliability-item--active .card-reliability-label {
+    color: #059669;
+  }
+
+  .card-reliability-item--reliable.card-reliability-item--active .card-reliability-count--nonzero {
+    color: #059669;
+    font-weight: 800;
+  }
+
+  .card-reliability-item--unreliable.card-reliability-item--active .card-reliability-label {
+    color: #DC2626;
+  }
+
+  .card-reliability-item--unreliable.card-reliability-item--active .card-reliability-count--nonzero {
+    color: #DC2626;
+    font-weight: 800;
+  }
+  
+  .list-footer {
+    padding: 48rpx 0;
+    text-align: center;
+  }
+  
+  .list-footer-text {
+    font-size: 24rpx;
+    color: #94A3B8;
+  }
+</style>

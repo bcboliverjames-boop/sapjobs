@@ -3,6 +3,8 @@
  * 自动识别需求原文中的模块、城市、周期、年限、语言等信息
  */
 
+import { extractCitiesFromText } from './city-lexicon'
+
 /**
  * 解析需求原文，提取结构化信息
  */
@@ -34,7 +36,8 @@ export function parseDemandText(rawText: string): {
     { pattern: /abap|开发/i, code: 'ABAP' },
     { pattern: /fiori|菲奥里/i, code: 'FIORI' },
     { pattern: /pm|设备|维护/i, code: 'PM' },
-    { pattern: /ps|项目(?!周期)|project\s*system/i, code: 'PS' },
+    // PS 只能在明确语境下命中，避免把“项目/长期项目”等误判为 PS
+    { pattern: /(?:^|[^a-zA-Z0-9])ps(?:$|[^a-zA-Z0-9])/i, code: 'PS' },
     { pattern: /mdg|主数据/i, code: 'MDG' },
   ]
   
@@ -55,154 +58,7 @@ export function parseDemandText(rawText: string): {
   }
   
   // 2. 识别城市/地区（支持省份、城市、海外等）
-  let city = ''
-  
-  // 先尝试匹配具体城市
-  const cityMap: Record<string, string> = {
-    '北京': '北京',
-    'beijing': '北京',
-    'bj': '北京',
-    '上海': '上海',
-    'shanghai': '上海',
-    'sh': '上海',
-    '深圳': '深圳',
-    'shenzhen': '深圳',
-    'sz': '深圳',
-    '广州': '广州',
-    'guangzhou': '广州',
-    'gz': '广州',
-    '杭州': '杭州',
-    'hangzhou': '杭州',
-    'hz': '杭州',
-    '成都': '成都',
-    'chengdu': '成都',
-    'cd': '成都',
-    '武汉': '武汉',
-    'wuhan': '武汉',
-    'wh': '武汉',
-    '南京': '南京',
-    'nanjing': '南京',
-    'nj': '南京',
-    '苏州': '苏州',
-    'suzhou': '苏州',
-    '合肥': '合肥',
-    'hefei': '合肥',
-    '全国': '全国',
-    '远程': '远程',
-    'remote': '远程',
-    '在家': '远程',
-    '居家': '远程',
-    '海外': '海外',
-    'overseas': '海外',
-    '国外': '海外',
-    '欧洲': '欧洲',
-    'europe': '欧洲',
-    '菲律宾': '菲律宾',
-    '菲利宾': '菲律宾',
-    'philippines': '菲律宾',
-  }
-  
-  // 省份映射
-  const provinceMap: Record<string, string> = {
-    '广东': '广东',
-    'guangdong': '广东',
-    'gd': '广东',
-    '安徽': '安徽',
-    'anhui': '安徽',
-    'ah': '安徽',
-    '浙江': '浙江',
-    'zhejiang': '浙江',
-    'zj': '浙江',
-    '江苏': '江苏',
-    'jiangsu': '江苏',
-    'js': '江苏',
-    '山东': '山东',
-    'shandong': '山东',
-    'sd': '山东',
-    '河南': '河南',
-    'henan': '河南',
-    'ha': '河南',
-    '湖南': '湖南',
-    'hunan': '湖南',
-    'hn': '湖南',
-    '湖北': '湖北',
-    'hubei': '湖北',
-    'hb': '湖北',
-    '四川': '四川',
-    'sichuan': '四川',
-    'sc': '四川',
-    '福建': '福建',
-    'fujian': '福建',
-    'fj': '福建',
-    '河北': '河北',
-    'hebei': '河北',
-    'he': '河北',
-    '陕西': '陕西',
-    'shaanxi': '陕西',
-    'sn': '陕西',
-    '辽宁': '辽宁',
-    'liaoning': '辽宁',
-    'ln': '辽宁',
-    '吉林': '吉林',
-    'jilin': '吉林',
-    'jl': '吉林',
-    '黑龙江': '黑龙江',
-    'heilongjiang': '黑龙江',
-    'hl': '黑龙江',
-    '江西': '江西',
-    'jiangxi': '江西',
-    'jx': '江西',
-    '重庆': '重庆',
-    'chongqing': '重庆',
-    'cq': '重庆',
-    '天津': '天津',
-    'tianjin': '天津',
-    'tj': '天津',
-  }
-  
-  // 先匹配具体城市
-  for (const [key, value] of Object.entries(cityMap)) {
-    if (new RegExp(key, 'i').test(text)) {
-      city = value
-      break
-    }
-  }
-  
-  // 如果没匹配到城市，尝试匹配省份
-  if (!city) {
-    for (const [key, value] of Object.entries(provinceMap)) {
-      if (new RegExp(key, 'i').test(text)) {
-        city = value
-        break
-      }
-    }
-  }
-  
-  // 如果包含多个地区（如"广东+欧洲"），提取第一个，但优先识别具体地区
-  const multiCityMatch = text.match(/([\u4e00-\u9fa5]+)\s*[+＋]\s*([\u4e00-\u9fa5]+)/i)
-  if (multiCityMatch) {
-    const firstCity = multiCityMatch[1]
-    const secondCity = multiCityMatch[2]
-    
-    // 检查第一个是否是省份或城市
-    if (provinceMap[firstCity] || cityMap[firstCity]) {
-      city = provinceMap[firstCity] || cityMap[firstCity] || firstCity
-    } else if (provinceMap[secondCity] || cityMap[secondCity]) {
-      // 如果第一个不是，检查第二个
-      city = provinceMap[secondCity] || cityMap[secondCity] || secondCity
-    }
-  }
-  
-  // 如果还是没有识别到，尝试匹配"XX:"或"XX："格式（如"安徽:"）
-  if (!city) {
-    const colonMatch = text.match(/([\u4e00-\u9fa5]+)[：:]/)
-    if (colonMatch) {
-      const potentialCity = colonMatch[1]
-      if (provinceMap[potentialCity] || cityMap[potentialCity]) {
-        city = provinceMap[potentialCity] || cityMap[potentialCity] || potentialCity
-      }
-    }
-  }
+  const city = extractCitiesFromText(text, 4).join('/')
   
   // 3. 识别工作方式
   let is_remote: boolean | undefined = undefined
@@ -216,6 +72,86 @@ export function parseDemandText(rawText: string): {
   let duration_text = ''
   const durationPatterns: Array<{ pattern: RegExp; text?: string; match?: (m: RegExpMatchArray) => string; allow?: (m: RegExpMatchArray) => boolean }> = [
     { pattern: /长期|永久|持续|长期项目/i, text: '长期' },
+    // “1年以上/一年以上”如果紧跟“尽快到位/随时进场/开始”等，强烈指向项目周期
+    {
+      pattern: /(?:1|一)\s*年\s*(?:以上|及以上|\+)\s*(?:尽快|尽早|随时|近期|马上)?\s*(?:到位|进场|入场|上岗|开始|开工|入职|onboard)/i,
+      match: () => `1年`,
+      allow: () => {
+        // 避免将“经验/年限”误判为周期
+        if (/经验|工作经验|年经验|年限|资历|经历|驻场经验|实施经验|运维经验/i.test(text)) return false
+        return true
+      },
+    },
+    // 周期/工期强语境：周期3年 / 周期三年（无“以上”）
+    {
+      pattern: /周期\s*(\d{1,2})\s*年(?!\s*(?:经验|工作经验|年经验))/i,
+      match: (m) => `${m[1]}年`,
+      allow: (m) => {
+        const y = Number(m[1] || 0)
+        if (!Number.isFinite(y) || y <= 0) return false
+        return true
+      },
+    },
+    {
+      pattern: /周期\s*(一|二|两|三|四|五|六|七|八|九|十)\s*年(?!\s*(?:经验|工作经验|年经验))/i,
+      match: (m) => {
+        const cn = String(m[1] || '').trim()
+        const map: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+        const y = map[cn] || 0
+        return y ? `${y}年` : ''
+      },
+    },
+    // 周期/工期强语境：周期1年以上 / 周期3年 / 周期五个月
+    {
+      pattern: /周期\s*(\d{1,2})\s*年\s*(?:以上|及以上|\+)?/i,
+      match: (m) => `${m[1]}年`,
+      allow: (m) => {
+        const y = Number(m[1] || 0)
+        if (!Number.isFinite(y) || y <= 0) return false
+        return true
+      },
+    },
+    // “1年以上/一年以上”在项目语境下高度可能是周期（而不是经验）。
+    // 注意：若出现“经验/工作经验/年限”等语境则不当作周期。
+    {
+      pattern: /(?:周期|工期|合同|项目|时长|为期)?\s*(\d{1,2})\s*年\s*(?:以上|及以上|\+|起)/i,
+      match: (m) => `${m[1]}年`,
+      allow: (m) => {
+        const y = Number(m[1] || 0)
+        if (!Number.isFinite(y) || y <= 0) return false
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 14)
+        const right = Math.min(text.length, idx + raw.length + 14)
+        const ctx = text.slice(left, right)
+        if (/经验|工作经验|年经验|年限|资历|经历|驻场经验|实施经验|运维经验/i.test(ctx)) return false
+        // 只有在“项目/周期/工期/合同/为期/时长”等语境下才判定为周期
+        if (/周期|工期|合同|项目|时长|为期|duration/i.test(ctx)) return true
+        return /周期|工期|合同|项目|时长|为期|duration/i.test(text)
+      },
+    },
+    {
+      pattern: /周期\s*(一|二|两|三|四|五|六|七|八|九|十)\s*年\s*(?:以上|及以上|\+)?/i,
+      match: (m) => {
+        const cn = String(m[1] || '').trim()
+        const map: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+        const y = map[cn] || 0
+        return y ? `${y}年` : ''
+      },
+    },
+    {
+      pattern: /周期\s*(\d{1,2})\s*(?:个)?月/i,
+      match: (m) => `${m[1]}个月`,
+    },
+    {
+      pattern: /周期\s*(一|二|两|三|四|五|六|七|八|九|十)\s*(?:个)?月/i,
+      match: (m) => {
+        const cn = String(m[1] || '').trim()
+        const map: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+        const mon = map[cn] || 0
+        return mon ? `${mon}个月` : ''
+      },
+    },
     // 6-12个月 / 6~12个月 / 6到12个月
     {
       pattern: /(\d{1,2})\s*(?:[-—~～到至])\s*(\d{1,2})\s*(?:个)?月/i,
@@ -325,6 +261,15 @@ export function parseDemandText(rawText: string): {
     {
       pattern: /(\d+)\s*年以上|(\d+)\s*年\+|(\d+)\s*years?\s*\+/i,
       match: (m) => `${m[1] || m[2] || m[3]}年以上`,
+      allow: (m) => {
+        const raw = String(m[0] || '')
+        const idx = text.indexOf(raw)
+        const left = Math.max(0, idx - 12)
+        const right = Math.min(text.length, idx + raw.length + 12)
+        const ctx = text.slice(left, right)
+        if (/周期|工期|合同|项目|时长|duration/i.test(ctx)) return false
+        return true
+      },
     },
     {
       pattern: /(\d+)\s*-\s*(\d+)\s*年|(\d+)\s*-\s*(\d+)\s*years?/i,

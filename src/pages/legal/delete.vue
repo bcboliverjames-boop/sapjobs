@@ -1,6 +1,15 @@
 <template>
   <view class="page">
-    <view class="card">
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">注销申请</text>
+        <view class="header-right"></view>
+      </view>
+    </view>
+    <scroll-view class="content" scroll-y>
       <text class="h1">账号注销 / 个人信息删除申请</text>
       <text class="meta">通过邮箱提交申请，我们会在 1-3 个工作日内处理并回复</text>
 
@@ -35,13 +44,14 @@
         <text class="h2">4. 处理说明</text>
         <text class="p">为保障账号与信息安全，我们可能需要你补充必要的身份核验信息。对于法律法规要求保留的记录，我们会在符合法律要求的前提下进行处理。</text>
       </view>
-    </view>
+    </scroll-view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { CONTACT_EMAIL, SITE_NAME } from '../../config/site'
+import { safeNavigateBack } from '../../utils'
 
 const copyEmail = () => {
   uni.setClipboardData({
@@ -101,22 +111,61 @@ const sendEmail = () => {
   })
   // #endif
 }
+
+const goBack = () => {
+  safeNavigateBack({ delta: 1 })
+}
+
+const loading = ref(false)
 </script>
 
 <style scoped>
 .page {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  padding: 28rpx;
   background: #F5F1E8;
-  color: #111827;
-  font-family: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  padding: 0;
 }
 
-.card {
-  background: #FFFFFF;
-  border-radius: 20rpx;
-  padding: 26rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.08);
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
+.content {
+  flex: 1;
+  padding: 24rpx;
+  background: #F5F1E8;
 }
 
 .h1 {

@@ -1,6 +1,15 @@
 <template>
   <view class="page">
-    <view class="card">
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">联系我们</text>
+        <view class="header-right"></view>
+      </view>
+    </view>
+    <view class="content">
       <text class="h1">联系我们</text>
       <text class="meta">用于咨询、删帖/更正申请、商务合作等</text>
 
@@ -31,6 +40,11 @@
 
 <script setup lang="ts">
 import { CONTACT_EMAIL } from '../../config/site'
+import { safeNavigateBack } from '../../utils'
+
+const goBack = () => {
+  safeNavigateBack({ delta: 1 })
+}
 
 const copyEmail = () => {
   uni.setClipboardData({
@@ -47,18 +61,50 @@ const copyEmail = () => {
 
 <style scoped>
 .page {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  padding: 28rpx;
   background: #F5F1E8;
-  color: #111827;
-  font-family: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  padding: 0;
 }
 
-.card {
-  background: #FFFFFF;
-  border-radius: 20rpx;
-  padding: 26rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.08);
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
+.content {
+  padding: 24rpx;
+  background: #F5F1E8;
 }
 
 .h1 {

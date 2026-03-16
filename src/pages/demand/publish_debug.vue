@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <view class="page">
     <view class="page-header-unified">
       <view class="page-header-content">
@@ -9,272 +9,11 @@
         <view class="header-right"></view>
       </view>
     </view>
-
-    <scroll-view v-if="canView" class="content" scroll-y>
-      <!-- 第一块：需求输入块 -->
-      <view class="publish-block">
-        <view class="section">
-          <text class="section-title">发布 SAP 顾问需求</text>
-          <text class="section-desc">分享你了解到的 SAP 顾问招聘需求，帮助更多顾问找到合适的机会</text>
-        </view>
-
-        <view class="section no-margin-bottom">
-          <text class="field-label">需求原文 <text class="required">*</text></text>
-          <textarea
-            class="field-input field-textarea"
-            v-model="form.raw_text"
-            placeholder="请粘贴从微信群/QQ群获取的原始需求文本..."
-            :maxlength="500"
-            auto-height
-            @blur="onRawTextBlur"
-            @input="onRawTextInput"
-          ></textarea>
-          <text class="field-hint">建议包含：模块、城市、周期、年限、语言等关键信息</text>
-          <view v-if="autoFilled" class="auto-fill-hint">
-            <text class="auto-fill-text"> 已自动识别并填充信息，可手动修改</text>
-          </view>
-        </view>
-
-        <!-- 自动识别按钮放在输入块左下角 -->
-        <view class="block-footer-actions">
-          <button class="auto-rec-btn" @click="handleAutoRecognize" :disabled="autoRecognizing || submitting">
-            {{ autoRecognizing ? '识别中...' : '自动识别' }}
-          </button>
-        </view>
-      </view>
-
-      <!-- 第二块：标签配置块 -->
-      <view class="publish-block">
-        <view class="section">
-          <text class="field-label">SAP 模块 <text class="required">*</text></text>
-          <view class="module-chips">
-            <view
-              v-for="m in availableModules"
-              :key="m.code"
-              class="module-chip"
-              :class="{ 'module-chip--active': form.module_codes.includes(m.code) }"
-              @tap="toggleModule(m.code)"
-            >
-              <text class="module-chip-text">{{ m.name }}</text>
-            </view>
-          </view>
-          <text class="field-hint">可多选，至少选择一个模块</text>
-
-          <view v-if="recognizeResult" class="recognize-panel">
-            <view class="recognize-row">
-              <text class="recognize-label">查重结果</text>
-              <text class="recognize-badge" :class="{
-                'recognize-badge--none': recognizeResult.level === 'none',
-                'recognize-badge--medium': recognizeResult.level === 'medium',
-                'recognize-badge--high': recognizeResult.level === 'high'
-              }">
-                {{ recognizeResult.summary }}
-              </text>
-            </view>
-            <text v-if="recognizeResult.detail" class="recognize-detail">{{ recognizeResult.detail }}</text>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="field-label">城市/地点</text>
-          <input
-            class="field-input"
-            v-model="form.city"
-            placeholder="例如：上海、北京、远程、海外等"
-            :maxlength="50"
-          />
-        </view>
-
-        <view class="section">
-          <text class="field-label">工作方式</text>
-          <view class="tag-chips">
-            <view
-              v-for="mode in remoteModes"
-              :key="String(mode.value)"
-              class="tag-chip"
-              :class="{ 'tag-chip--active': form.is_remote === mode.value }"
-              @tap="form.is_remote = mode.value"
-            >
-              <text class="tag-chip-text">{{ mode.label }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="field-label">合作方式</text>
-          <view class="tag-chips">
-            <view
-              v-for="opt in cooperationModes"
-              :key="opt.value"
-              class="tag-chip"
-              :class="{ 'tag-chip--active': form.cooperation_mode === opt.value }"
-              @tap="form.cooperation_mode = opt.value"
-            >
-              <text class="tag-chip-text">{{ opt.label }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="field-label">项目周期要求</text>
-          <input
-            class="field-input"
-            v-model="form.duration_text"
-            placeholder="例如：3个月、6个月、长期等"
-            :maxlength="50"
-          />
-          <view class="tag-chips mini-margin-top">
-            <view
-              v-for="opt in durationRanges"
-              :key="opt.value"
-              class="tag-chip"
-              :class="{ 'tag-chip--active': form.project_cycle === opt.value }"
-              @tap="form.project_cycle = opt.value"
-            >
-              <text class="tag-chip-text">{{ opt.label }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="field-label">年限要求</text>
-          <input
-            class="field-input"
-            v-model="form.years_text"
-            placeholder="例如：3-5年、5年以上等"
-            :maxlength="50"
-          />
-          <view class="tag-chips mini-margin-top">
-            <view
-              v-for="opt in yearRanges"
-              :key="opt.value"
-              class="tag-chip"
-              :class="{ 'tag-chip--active': form.consultant_level === opt.value }"
-              @tap="form.consultant_level = opt.value"
-            >
-              <text class="tag-chip-text">{{ opt.label }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="field-label">语言要求</text>
-          <view class="tag-chips">
-            <view
-              v-for="lang in languages"
-              :key="lang.value"
-              class="tag-chip"
-              :class="{ 'tag-chip--active': form.language === lang.value }"
-              @tap="form.language = lang.value"
-            >
-              <text class="tag-chip-text">{{ lang.label }}</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="section no-margin-bottom">
-          <text class="field-label">信息提供者名称</text>
-          <input
-            class="field-input"
-            v-model="form.provider_name"
-            placeholder="你的昵称或名称（可选）"
-            :maxlength="50"
-          />
-          <text class="field-hint">用于在需求卡片上显示信息来源</text>
-        </view>
-      </view>
-
-      <!-- 第三块：发布提交块 -->
-      <view class="publish-block">
-        <!-- 多行需求拆分预览 -->
-        <view v-if="showSplitPreview && splitDemands.length > 1" class="split-preview">
-          <view class="split-header">
-            <text class="split-title">检测到 {{ splitDemands.length }} 条需求，请选择要发布的需求：</text>
-            <view class="split-actions">
-              <text class="split-action-btn" @tap="toggleSelectAll">
-                {{ selectedDemands.size === splitDemands.filter(d => d.canPublish).length ? '取消全选' : '全选' }}
-              </text>
-              <text class="split-action-btn" @tap="cancelSplit">取消拆分</text>
-            </view>
-          </view>
-
-          <!-- 相似度提示 -->
-          <view v-if="splitDemands.some(d => !d.canPublish)" class="similarity-warning">
-            <text class="similarity-warning-text">
-               ⚠️ 因相似度过高，仅发布相似度低于 {{ Math.round(similarityThreshold * 100) }}% 的需求
-            </text>
-          </view>
-
-          <view v-if="checkingSimilarity" class="checking-similarity">
-            <text class="checking-text">正在检查相似度...</text>
-          </view>
-
-          <view v-else class="split-list">
-            <view
-              v-for="(demand, index) in splitDemands"
-              :key="index"
-              class="split-item"
-              :class="{
-                'split-item--selected': selectedDemands.has(index),
-                'split-item--disabled': !demand.canPublish
-              }"
-              @tap="toggleDemandSelection(index)"
-            >
-              <view class="split-item-checkbox" :class="{ 'split-item-checkbox--disabled': !demand.canPublish }">
-                <view v-if="selectedDemands.has(index)" class="checkbox-checked"></view>
-                <view v-else-if="!demand.canPublish" class="checkbox-disabled"></view>
-              </view>
-              <view class="split-item-content">
-                <text class="split-item-text">{{ demand.text }}</text>
-                <view class="split-item-meta">
-                  <text class="similarity-badge" :class="{
-                    'similarity-badge--low': demand.similarity < 0.5,
-                    'similarity-badge--medium': demand.similarity >= 0.5 && demand.similarity < similarityThreshold,
-                    'similarity-badge--high': demand.similarity >= similarityThreshold
-                  }">
-                    相似度 {{ Math.round(demand.similarity * 100) }}%
-                    <text v-if="demand.isSameUser" class="same-user-tag">（同一用户）</text>
-                  </text>
-                  <text v-if="!demand.canPublish" class="cannot-publish-tag">不可发布</text>
-                </view>
-                <view v-if="demand.tagSummary" class="split-item-tags">
-                  <text class="split-item-tags-text">{{ demand.tagSummary }}</text>
-                </view>
-              </view>
-            </view>
-          </view>
-
-          <view class="split-footer">
-            <text class="split-count">
-              已选择 {{ selectedDemands.size }} 条需求
-              <text v-if="splitDemands.some(d => !d.canPublish)">
-                （{{ splitDemands.filter(d => !d.canPublish).length }} 条因相似度过高已过滤）
-              </text>
-            </text>
-            <button
-              class="submit-btn split-submit-btn"
-              @click="handleBatchSubmit"
-              :disabled="submitting || selectedDemands.size === 0"
-            >
-              {{ submitting ? '发布中...' : '批量发布 ' + selectedDemands.size + ' 条需求' }}
-            </button>
-          </view>
-        </view>
-
-        <button v-else class="submit-btn" @click="handleSubmit" :disabled="submitting">
-          {{ submitting ? '发布中...' : '发布需求' }}
-        </button>
-
-        <view class="points-hint">
-          <text class="points-hint-text">
-             💡 发布需求成功后，将获得 {{ getRewardPoints('publishDemand') }} 积分奖励
-          </text>
-        </view>
-      </view>
-    </scroll-view>
+    <view class="minimal-content">
+      <text>Publish Page Minimal Render Test</text>
+    </view>
   </view>
 </template>
-
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ensureLogin, requireNonGuest } from '../../utils/cloudbase'
@@ -348,15 +87,15 @@ const splitDemands = ref<Array<{
   text: string
   similarity: number
   isSameUser?: boolean
-  canPublish: boolean
+  canPublish: boolean // 是否可以发布（相似度低于阈值）
   blockedReason?: string
   tagSummary?: string
   parsed?: any
-}>>([])
+}>>([]) // 拆分后的多个需求，包含相似度信息
 
-const showSplitPreview = ref(false)
-const selectedDemands = ref<Set<number>>(new Set())
-const checkingSimilarity = ref(false)
+const showSplitPreview = ref(false) // 是否显示拆分预览
+const selectedDemands = ref<Set<number>>(new Set()) // 选中的需求索引
+const checkingSimilarity = ref(false) // 是否正在检查相似度
 const adminConfig = ref(getDefaultAdminConfig())
 
 const similarityEnabled = computed(() => {
@@ -482,32 +221,81 @@ const toggleModule = (code: string) => {
   }
 }
 
+// 自动解析需求原文
 const parseAndFillForm = (text: string) => {
-  if (!text || text.trim().length < 10) return
-  if (isParsing.value) return
+  if (!text || text.trim().length < 10) {
+    return
+  }
+  
+  if (isParsing.value) {
+    return
+  }
+  
   isParsing.value = true
   try {
     const parsed = parseDemandText(text)
+
     const inferred = inferExtraTags(text, parsed)
+    
+    // 填充模块（如果当前没有选择模块）
     if (form.value.module_codes.length === 0 && parsed.module_codes.length > 0) {
       form.value.module_codes = normalizeSapModuleCodes(parsed.module_codes)
     }
-    if (!form.value.city && parsed.city) form.value.city = parsed.city
-    if (form.value.is_remote === undefined && parsed.is_remote !== undefined) form.value.is_remote = parsed.is_remote
-    if (!form.value.cooperation_mode && inferred.cooperation_mode) form.value.cooperation_mode = inferred.cooperation_mode
-    if (!form.value.duration_text && parsed.duration_text) form.value.duration_text = parsed.duration_text
-    if (!form.value.project_cycle && inferred.project_cycle) form.value.project_cycle = inferred.project_cycle
-    if (!form.value.years_text && parsed.years_text) form.value.years_text = parsed.years_text
-    if (!form.value.consultant_level && inferred.consultant_level) form.value.consultant_level = inferred.consultant_level
-    if (!form.value.language && parsed.language) form.value.language = parsed.language
-    if (!form.value.time_requirement && inferred.time_requirement) form.value.time_requirement = inferred.time_requirement
+    
+    // 填充城市（如果当前为空）
+    if (!form.value.city && parsed.city) {
+      form.value.city = parsed.city
+    }
+    
+    // 填充工作方式（如果当前未设置）
+    if (form.value.is_remote === undefined && parsed.is_remote !== undefined) {
+      form.value.is_remote = parsed.is_remote
+    }
+
+    if (!form.value.cooperation_mode && inferred.cooperation_mode) {
+      form.value.cooperation_mode = inferred.cooperation_mode
+    }
+    
+    // 填充周期（如果当前为空）
+    if (!form.value.duration_text && parsed.duration_text) {
+      form.value.duration_text = parsed.duration_text
+    }
+
+    if (!form.value.project_cycle && inferred.project_cycle) {
+      form.value.project_cycle = inferred.project_cycle
+    }
+    
+    // 填充年限（如果当前为空）
+    if (!form.value.years_text && parsed.years_text) {
+      form.value.years_text = parsed.years_text
+    }
+
+    if (!form.value.consultant_level && inferred.consultant_level) {
+      form.value.consultant_level = inferred.consultant_level
+    }
+    
+    // 填充语言（如果当前为空）
+    if (!form.value.language && parsed.language) {
+      form.value.language = parsed.language
+    }
+
+    if (!form.value.time_requirement && inferred.time_requirement) {
+      form.value.time_requirement = inferred.time_requirement
+    }
+    
+    // 尝试提取提供者名称
     if (!form.value.provider_name) {
       const providerName = extractProviderName(text)
-      if (providerName) form.value.provider_name = providerName
+      if (providerName) {
+        form.value.provider_name = providerName
+      }
     }
+    
     if (parsed.module_codes.length > 0 || parsed.city || parsed.duration_text || parsed.years_text || parsed.language) {
       autoFilled.value = true
-      setTimeout(() => { autoFilled.value = false }, 3000)
+      setTimeout(() => {
+        autoFilled.value = false
+      }, 3000)
     }
   } catch (e) {
     console.error('解析需求文本失败:', e)
@@ -529,8 +317,10 @@ const inferProjectCycle = (durationText: string, rawText: string): string => {
   const raw = String(rawText || '').trim()
   const s = (dur + ' ' + raw).trim()
   if (!s) return ''
+
   if (/长期|永久|持续|不限/i.test(s)) return 'LONG'
   if (/(\d+)\s*年/i.test(s)) return 'LONG'
+
   const m = s.match(/(\d+)\s*个月/i)
   if (m && m[1]) {
     const months = Number(m[1])
@@ -550,6 +340,8 @@ const inferConsultantLevel = (yearsText: string, rawText: string): string => {
   const raw = String(rawText || '').trim()
   const s = (y + ' ' + raw).trim()
   if (!s) return ''
+
+  // 显式年限区间识别
   const m = s.match(/(\d+)\s*年以上/)
   if (m && m[1]) {
     const n = Number(m[1])
@@ -558,6 +350,7 @@ const inferConsultantLevel = (yearsText: string, rawText: string): string => {
     if (n >= 4) return '4-6'
     return '0-3'
   }
+
   const m2 = s.match(/(\d+)\s*-(\d+)\s*年/)
   if (m2 && m2[1]) {
     const start = Number(m2[1])
@@ -566,6 +359,7 @@ const inferConsultantLevel = (yearsText: string, rawText: string): string => {
     if (start >= 4) return '4-6'
     return '0-3'
   }
+
   const m3 = s.match(/^(\d+)\s*年$/)
   if (m3 && m3[1]) {
     const n = Number(m3[1])
@@ -574,10 +368,12 @@ const inferConsultantLevel = (yearsText: string, rawText: string): string => {
     if (n >= 4) return '4-6'
     return '0-3'
   }
+  
   if (/10年|十年/i.test(s)) return '10+'
   if (/[7-9]年/i.test(s)) return '7-10'
   if (/[4-6]年/i.test(s)) return '4-6'
   if (/[0-3]年|初级|0经验/i.test(s)) return '0-3'
+
   return ''
 }
 
@@ -593,7 +389,9 @@ const inferCooperationMode = (rawText: string): string => {
   return ''
 }
 
-const inferTimeRequirement = (rawText: string): string => ''
+const inferTimeRequirement = (rawText: string): string => {
+  return ''
+}
 
 const inferExtraTags = (rawText: string, parsed: any) => {
   const cooperation_mode = inferCooperationMode(rawText)
@@ -609,39 +407,58 @@ const buildTagSummary = (rawText: string, parsed: any, extras: any, useForm: boo
   const cooperation = (useForm ? String(form.value.cooperation_mode || '').trim() : '') || String(extras?.cooperation_mode || '').trim()
   const cycleVal = (useForm ? String(form.value.project_cycle || '').trim() : '') || String(extras?.project_cycle || '').trim()
   const levelVal = (useForm ? String(form.value.consultant_level || '').trim() : '') || String(extras?.consultant_level || '').trim()
+
   const parts: string[] = []
   if (city) parts.push(`地点:${city}`)
   if (cooperation) parts.push(`合作:${cooperation}`)
+  
   if (cycleVal) {
     const opt = durationRanges.find(o => o.value === cycleVal)
     if (opt && opt.label !== '不限') parts.push(`周期:${opt.label}`)
   }
+  
   if (levelVal) {
     const opt = yearRanges.find(o => o.value === levelVal)
     if (opt && opt.label !== '不限') parts.push(`年限:${opt.label}`)
   }
+
   if (langTag) parts.push(`语言:${langTag}`)
+
   return parts.join(' | ')
 }
 
+// 需求原文输入事件（防抖处理）
 let parseTimer: any = null
 const onRawTextInput = () => {
-  if (parseTimer) clearTimeout(parseTimer)
+  if (parseTimer) {
+    clearTimeout(parseTimer)
+  }
+  
   parseTimer = setTimeout(() => {
-    if (form.value.raw_text) parseAndFillForm(form.value.raw_text)
+    if (form.value.raw_text) {
+      parseAndFillForm(form.value.raw_text)
+    }
   }, 500)
 }
 
+// 需求原文失焦事件
 const onRawTextBlur = async () => {
-  if (parseTimer) { clearTimeout(parseTimer); parseTimer = null; }
+  if (parseTimer) {
+    clearTimeout(parseTimer)
+    parseTimer = null
+  }
+  
   if (form.value.raw_text) {
+    // 检查是否有多行需求
     if (hasMultipleDemands(form.value.raw_text)) {
       const demands = splitMultiLineDemands(form.value.raw_text)
       if (demands.length > 1) {
+        // 检查每条需求的相似度
         await checkDemandsSimilarity(demands)
         return
       }
     }
+    
     parseAndFillForm(form.value.raw_text)
   }
 }
@@ -652,7 +469,9 @@ const handleAutoRecognize = async () => {
     uni.showToast({ title: '请先粘贴需求原文', icon: 'none' })
     return
   }
+
   if (autoRecognizing.value) return
+
   if (hasMultipleDemands(rawText)) {
     const demands = splitMultiLineDemands(rawText)
     if (demands.length > 1) {
@@ -660,10 +479,12 @@ const handleAutoRecognize = async () => {
       return
     }
   }
+
   autoRecognizing.value = true
   recognizeResult.value = null
   try {
     parseAndFillForm(rawText)
+
     await ensureLogin()
     const user = await getPublisherProfile()
     const cfg = adminConfig.value
@@ -676,14 +497,21 @@ const handleAutoRecognize = async () => {
           rule: cfg.similarity_rule,
         })
       : { hasSimilar: false, similarDemands: [] as any[] }
+
     if (!similarityCheck.hasSimilar || similarityCheck.similarDemands.length === 0) {
-      recognizeResult.value = { level: 'none', summary: '未发现相似需求', detail: '范围：近 ' + similarityLookbackDays.value + ' 天' }
+      recognizeResult.value = {
+        level: 'none',
+        summary: '未发现相似需求',
+        detail: '范围：近 ' + similarityLookbackDays.value + ' 天'
+      }
       return
     }
+
     const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
     const best = sameUserSimilar || similarityCheck.similarDemands[0]
     const percent = Math.round(best.similarity * 100)
     const isHigh = !!best.isSameUser && best.similarity >= cfg.similarity_threshold
+
     recognizeResult.value = {
       level: isHigh ? 'high' : 'medium',
       summary: best.isSameUser ? `最高相似度 ${percent}%（同一用户）` : `最高相似度 ${percent}%`,
@@ -697,18 +525,23 @@ const handleAutoRecognize = async () => {
   }
 }
 
+// 检查拆分后需求的相似度
 const checkDemandsSimilarity = async (demands: string[]) => {
   checkingSimilarity.value = true
   showSplitPreview.value = true
+  
   try {
     await ensureLogin()
     const user = await getOrCreateUserProfile()
     const cfg = adminConfig.value
+    
+    // 检查每条需求的相似度
     const demandsWithSimilarity = await Promise.all(
       demands.map(async (demandText) => {
         const quality = validateDemandQuality(demandText)
         const parsed = parseDemandText(demandText)
         const inferred = inferExtraTags(demandText, parsed)
+        // 检查是否有相似需求
         const similarityCheck = similarityEnabled.value
           ? await checkSimilarDemandsByPolicy({
               rawText: demandText,
@@ -718,81 +551,157 @@ const checkDemandsSimilarity = async (demands: string[]) => {
               rule: cfg.similarity_rule,
             })
           : { hasSimilar: false, similarDemands: [] as any[] }
+        
         let maxSimilarity = 0
         let isSameUser = false
+        
         if (similarityCheck.hasSimilar && similarityCheck.similarDemands.length > 0) {
+          // 检查是否有同一用户发布的相似需求
           const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
-          if (sameUserSimilar) { maxSimilarity = sameUserSimilar.similarity; isSameUser = true; }
-          else maxSimilarity = similarityCheck.similarDemands[0].similarity
+          
+          if (sameUserSimilar) {
+            maxSimilarity = sameUserSimilar.similarity
+            isSameUser = true
+          } else {
+            // 不同用户，取最高相似度
+            maxSimilarity = similarityCheck.similarDemands[0].similarity
+          }
         }
+        
         const canPublish = !!quality.ok && !(isSameUser && maxSimilarity >= cfg.similarity_threshold)
-        return { text: demandText, similarity: Math.round(maxSimilarity * 100) / 100, isSameUser, canPublish, blockedReason: quality.ok ? undefined : quality.reason, tagSummary: buildTagSummary(demandText, parsed, inferred, false) }
+
+        return {
+          text: demandText,
+          similarity: Math.round(maxSimilarity * 100) / 100,
+          isSameUser,
+          canPublish,
+          blockedReason: quality.ok ? undefined : quality.reason,
+          tagSummary: buildTagSummary(demandText, parsed, inferred, false),
+        }
       })
     )
+    
+    // 按相似度从低到高排序
     demandsWithSimilarity.sort((a, b) => a.similarity - b.similarity)
+    
     splitDemands.value = demandsWithSimilarity
-    const selectableIndices = demandsWithSimilarity.map((_, index) => index).filter(index => demandsWithSimilarity[index].canPublish)
+    
+    // 默认只选择可以发布的需求（相似度低于阈值）
+    const selectableIndices = demandsWithSimilarity
+      .map((_, index) => index)
+      .filter(index => demandsWithSimilarity[index].canPublish)
     selectedDemands.value = new Set(selectableIndices)
   } catch (e) {
     console.error('检查相似度失败:', e)
+    // 如果检查失败，仍然显示拆分预览，但不显示相似度
     splitDemands.value = demands.map(text => {
       const quality = validateDemandQuality(text)
       const parsed = parseDemandText(text)
       const inferred = inferExtraTags(text, parsed)
-      return { text, similarity: 0, canPublish: !!quality.ok, blockedReason: quality.ok ? undefined : quality.reason, tagSummary: buildTagSummary(text, parsed, inferred, false) }
+      return {
+        text,
+        similarity: 0,
+        canPublish: !!quality.ok,
+        blockedReason: quality.ok ? undefined : quality.reason,
+        tagSummary: buildTagSummary(text, parsed, inferred, false),
+      }
     })
-    const selectableIndices = splitDemands.value.map((_, index) => index).filter(index => splitDemands.value[index].canPublish)
+    const selectableIndices = splitDemands.value
+      .map((_, index) => index)
+      .filter(index => splitDemands.value[index].canPublish)
     selectedDemands.value = new Set(selectableIndices)
   } finally {
     checkingSimilarity.value = false
   }
 }
 
+// 切换需求选择
 const toggleDemandSelection = (index: number) => {
   const demand = splitDemands.value[index]
+  // 如果相似度过高，不允许选择
   if (!demand || !demand.canPublish) {
     const reason = demand && demand.blockedReason
-    if (reason) { uni.showToast({ title: reason, icon: 'none', duration: 2000 }); return; }
-    uni.showToast({ title: `相似度过高（${Math.round(demand.similarity * 100)}%），无法发布`, icon: 'none', duration: 2000 })
+    if (reason) {
+      uni.showToast({ title: reason, icon: 'none', duration: 2000 })
+      return
+    }
+    uni.showToast({
+      title: `相似度过高（${Math.round(demand.similarity * 100)}%），无法发布`,
+      icon: 'none',
+      duration: 2000
+    })
     return
   }
-  if (selectedDemands.value.has(index)) selectedDemands.value.delete(index)
-  else selectedDemands.value.add(index)
+  
+  if (selectedDemands.value.has(index)) {
+    selectedDemands.value.delete(index)
+  } else {
+    selectedDemands.value.add(index)
+  }
 }
 
+// 全选/取消全选（只选择可以发布的需求）
 const toggleSelectAll = () => {
-  const selectableIndices = splitDemands.value.map((_, index) => index).filter(index => splitDemands.value[index].canPublish)
+  const selectableIndices = splitDemands.value
+    .map((_, index) => index)
+    .filter(index => splitDemands.value[index].canPublish)
+  
   const allSelected = selectableIndices.every(index => selectedDemands.value.has(index))
-  if (allSelected) selectedDemands.value.clear()
-  else selectedDemands.value = new Set(selectableIndices)
+  
+  if (allSelected) {
+    selectedDemands.value.clear()
+  } else {
+    selectedDemands.value = new Set(selectableIndices)
+  }
 }
 
+// 取消拆分，使用单条需求
 const cancelSplit = () => {
   showSplitPreview.value = false
   splitDemands.value = []
   selectedDemands.value.clear()
   checkingSimilarity.value = false
-  if (form.value.raw_text) parseAndFillForm(form.value.raw_text)
+  // 继续解析单条需求
+  if (form.value.raw_text) {
+    parseAndFillForm(form.value.raw_text)
+  }
 }
 
 onMounted(async () => {
-  try { if (!allowLocalDevBypass) await requireNonGuestForPublish() } catch { return }
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
+
   canView.value = true
-  try { adminConfig.value = await fetchAdminConfig() } catch { adminConfig.value = getDefaultAdminConfig() }
+  try {
+    adminConfig.value = await fetchAdminConfig()
+  } catch {
+    adminConfig.value = getDefaultAdminConfig()
+  }
+  // 获取当前用户信息，自动填充提供者名称
   try {
     const profile = await getPublisherProfile()
-    if (profile.nickname) form.value.provider_name = profile.nickname
-  } catch (e) { console.error('获取用户信息失败:', e) }
+    if (profile.nickname) {
+      form.value.provider_name = profile.nickname
+    }
+  } catch (e) {
+    console.error('获取用户信息失败:', e)
+  }
 })
 
 const ensureContactMaintained = async (): Promise<boolean> => {
   if (allowLocalDevBypass) return true
+
   const prof = await getOrCreateUserProfile()
   const acct = await getMyAccountInfo()
+
   const wechat = String(prof?.wechat_id || '').trim()
   const qq = String(prof?.qq_id || '').trim()
   const phone = String((acct as any)?.phone || '').trim()
   const email = String((acct as any)?.email || '').trim()
+
   const ok = !!(wechat || qq || phone || email)
   if (!ok) {
     uni.showToast({ title: '个人联系信息未维护，请维护后再发布', icon: 'none', duration: 2500 })
@@ -804,27 +713,67 @@ const ensureContactMaintained = async (): Promise<boolean> => {
 const validateDemandQuality = (text: string): { ok: boolean; reason?: string } => {
   const raw = String(text || '').trim()
   if (!raw) return { ok: false, reason: '内容为空，无法发布' }
-  const cleaned = raw.replace(/\[[^\]]*\]/g, ' ').replace(/【[^】]*】/g, ' ').replace(/[\|｜]/g, ' ').replace(/\s+/g, ' ').trim()
-  if (cleaned.length < 8) return { ok: false, reason: '内容过短或仅标签，无法发布' }
+
+  const cleaned = raw
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/[\|｜]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (cleaned.length < 8) {
+    return { ok: false, reason: '内容过短或仅标签，无法发布' }
+  }
   return { ok: true }
 }
 
 const handleSubmit = async () => {
-  try { await requireNonGuestForPublish() } catch { return }
-  if (!form.value.raw_text.trim()) { uni.showToast({ title: '请输入需求原文', icon: 'none' }); return; }
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
+  // 验证必填项
+  if (!form.value.raw_text.trim()) {
+    uni.showToast({ title: '请输入需求原文', icon: 'none' })
+    return
+  }
+
   const q = validateDemandQuality(form.value.raw_text)
-  if (!q.ok) { uni.showToast({ title: q.reason || '需求内容不符合发布要求', icon: 'none' }); return; }
+  if (!q.ok) {
+    uni.showToast({ title: q.reason || '需求内容不符合发布要求', icon: 'none' })
+    return
+  }
+
+  // 兜底：点击“发布需求”时如果检测到多条需求，直接进入拆分预览流程
+  // 避免部分端点击按钮不触发 textarea blur，导致预览不出现
   if (!showSplitPreview.value && hasMultipleDemands(form.value.raw_text)) {
     const demands = splitMultiLineDemands(form.value.raw_text)
-    if (demands.length > 1) { await checkDemandsSimilarity(demands); return; }
+    if (demands.length > 1) {
+      await checkDemandsSimilarity(demands)
+      return
+    }
   }
-  if (form.value.module_codes.length === 0) { uni.showToast({ title: '请至少选择一个 SAP 模块', icon: 'none' }); return; }
+
+  // 单条发布才强制要求选择模块
+  if (form.value.module_codes.length === 0) {
+    uni.showToast({ title: '请至少选择一个 SAP 模块', icon: 'none' })
+    return
+  }
+
   submitting.value = true
   try {
     await ensureLogin()
+    
+    // 获取当前用户ID
     const user = await getPublisherProfile()
+
     const contactOk = await ensureContactMaintained()
-    if (!contactOk) { submitting.value = false; return; }
+    if (!contactOk) {
+      submitting.value = false
+      return
+    }
+    
     const cfg = adminConfig.value
     if (similarityEnabled.value) {
       const similarityCheck = await checkSimilarDemandsByPolicy({
@@ -834,35 +783,105 @@ const handleSubmit = async () => {
         threshold: cfg.similarity_threshold,
         rule: cfg.similarity_rule,
       })
+
       if (similarityCheck.hasSimilar && similarityCheck.similarDemands.length > 0) {
         const sameUserSimilar = similarityCheck.similarDemands.find((d: any) => d.isSameUser)
+
         if (sameUserSimilar && sameUserSimilar.similarity >= cfg.similarity_threshold) {
-          uni.showToast({ title: `检测到您已发布过相似需求（相似度 ${Math.round(sameUserSimilar.similarity * 100)}%），请勿重复发布`, icon: 'none', duration: 3000 })
-          submitting.value = false; return
+          uni.showToast({
+            title: `检测到您已发布过相似需求（相似度 ${Math.round(sameUserSimilar.similarity * 100)}%），请勿重复发布`,
+            icon: 'none',
+            duration: 3000,
+          })
+          submitting.value = false
+          return
         }
+
         const mostSimilar = similarityCheck.similarDemands[0]
         const confirm = await new Promise<boolean>((resolve) => {
-          uni.showModal({ title: '发现相似需求', content: `发现相似需求（相似度 ${Math.round(mostSimilar.similarity * 100)}%）。\n\n是否仍要发布？`, confirmText: '仍要发布', cancelText: '取消', success: (res) => resolve(res.confirm), fail: () => resolve(false) })
+          uni.showModal({
+            title: '发现相似需求',
+            content: `发现相似需求（相似度 ${Math.round(mostSimilar.similarity * 100)}%）。\n\n是否仍要发布？`,
+            confirmText: '仍要发布',
+            cancelText: '取消',
+            success: (res) => {
+              resolve(res.confirm)
+            },
+            fail: () => {
+              resolve(false)
+            },
+          })
         })
-        if (!confirm) { submitting.value = false; return; }
+
+        if (!confirm) {
+          submitting.value = false
+          return
+        }
       }
     }
+    
+    // 单条发布：使用表单数据
     await publishSingleDemand(form.value.raw_text, true)
+
+    // 发布需求获得积分（从配置读取）
     const publishPoints = getRewardPoints('publishDemand')
-    if (publishPoints > 0) await updateUserProfile({}, { addPoints: publishPoints })
-    uni.showToast({ title: publishPoints > 0 ? `发布成功，获得 ${publishPoints} 积分` : '发布成功', icon: 'success', duration: 2000 })
-    setTimeout(() => { uni.reLaunch({ url: '/pages/demand/demand' }) }, 1500)
+    if (publishPoints > 0) {
+      await updateUserProfile({}, { addPoints: publishPoints })
+      console.log(`发布需求获得 ${publishPoints} 积分`)
+    }
+
+    uni.showToast({
+      title: publishPoints > 0 ? `发布成功，获得 ${publishPoints} 积分` : '发布成功',
+      icon: 'success',
+      duration: 2000
+    })
+
+    // 延迟跳转，让用户看到成功提示
+    setTimeout(() => {
+      uni.reLaunch({
+        url: '/pages/demand/demand'
+      })
+    }, 1500)
   } catch (e: any) {
     console.error('发布需求失败:', e)
-    uni.showToast({ title: e?.message || '发布失败，请重试', icon: 'none' })
-  } finally { submitting.value = false }
+    uni.showToast({
+      title: e?.message || '发布失败，请重试',
+      icon: 'none'
+    })
+  } finally {
+    submitting.value = false
+  }
 }
 
+// 发布单条需求
 const publishSingleDemand = async (demandText: string, useFormData: boolean = false) => {
+  console.log('publishSingleDemand 开始:', {
+    demandText: demandText.substring(0, 50) + '...',
+    useFormData,
+    splitDemandsLength: splitDemands.value.length
+  })
+  
+  // 对于批量发布，每条需求独立解析，不使用表单数据
+  // 对于单条发布，可以使用表单数据作为补充
   const parsed = parseDemandText(demandText)
   const inferred = inferExtraTags(demandText, parsed)
-  let moduleCodes: string[] = [], city = '', duration_text = '', years_text = '', language = '', daily_rate = '', is_remote: boolean | undefined = undefined, cooperation_mode = '', project_cycle = '', consultant_level = '', time_requirement = ''
+  
+  console.log('解析结果:', parsed)
+  
+  let moduleCodes: string[] = []
+  let city = ''
+  let duration_text = ''
+  let years_text = ''
+  let language = ''
+  let daily_rate = ''
+  let is_remote: boolean | undefined = undefined
+  let cooperation_mode = ''
+  let project_cycle = ''
+  let consultant_level = ''
+  let time_requirement = ''
+  
   if (useFormData) {
+    // 单条发布：优先使用表单数据，解析结果作为补充
     moduleCodes = form.value.module_codes.length > 0 ? form.value.module_codes : parsed.module_codes
     city = form.value.city.trim() || parsed.city || '未指定'
     duration_text = form.value.duration_text.trim() || parsed.duration_text
@@ -875,6 +894,7 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
     cooperation_mode = String(form.value.cooperation_mode || '').trim() || inferred.cooperation_mode
     time_requirement = String(form.value.time_requirement || '').trim() || inferred.time_requirement
   } else {
+    // 批量发布：每条需求独立解析，不使用表单数据
     moduleCodes = parsed.module_codes.length > 0 ? parsed.module_codes : ['OTHER']
     city = parsed.city || '未指定'
     duration_text = parsed.duration_text
@@ -887,17 +907,49 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
     cooperation_mode = inferred.cooperation_mode
     time_requirement = inferred.time_requirement
   }
+
   const work_mode = is_remote === true ? '远程' : is_remote === false ? '现场' : ''
   const language_tag = normalizeLanguageTag(language)
-  if (moduleCodes.length === 0) moduleCodes = ['OTHER']
+  
+  // 确保至少有一个模块
+  if (moduleCodes.length === 0) {
+    moduleCodes = ['OTHER']
+  }
+  
+  // 生成模块标签
   const moduleLabels = moduleCodes.map(code => {
     const module = availableModules.find(m => m.code === code)
     return module ? module.name : code
   })
+
   const user = await getOrCreateUserProfile()
-  const demandData: any = { raw_text: demandText.trim(), module_codes: moduleCodes, module_labels: moduleLabels, city, duration_text, project_cycle, years_text, consultant_level, language, language_tag, cooperation_mode, work_mode, time_requirement, provider_name: form.value.provider_name.trim() || user.nickname || '匿名用户', provider_user_id: user.uid, createdAt: new Date(), updatedAt: new Date() }
+  
+  // 构建需求数据
+  const demandData: any = {
+    raw_text: demandText.trim(),
+    module_codes: moduleCodes,
+    module_labels: moduleLabels,
+    city: city,
+    duration_text: duration_text,
+    project_cycle,
+    years_text: years_text,
+    consultant_level,
+    language: language,
+    language_tag,
+    cooperation_mode,
+    work_mode,
+    time_requirement,
+    provider_name: form.value.provider_name.trim() || user.nickname || '匿名用户',
+    provider_user_id: user.uid,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
   const tags: string[] = []
-  moduleCodes.forEach((m) => { const v = String(m || '').trim().toUpperCase(); if (v && !tags.includes(v)) tags.push(v) })
+  moduleCodes.forEach((m) => {
+    const v = String(m || '').trim().toUpperCase()
+    if (v && !tags.includes(v)) tags.push(v)
+  })
   if (city && !tags.includes(city)) tags.push(city)
   if (cooperation_mode && !tags.includes(cooperation_mode)) tags.push(cooperation_mode)
   if (work_mode && !tags.includes(work_mode)) tags.push(work_mode)
@@ -905,57 +957,157 @@ const publishSingleDemand = async (demandText: string, useFormData: boolean = fa
   if (project_cycle && !tags.includes(project_cycle)) tags.push(project_cycle)
   if (language_tag && !tags.includes(language_tag)) tags.push(language_tag)
   if (time_requirement && !tags.includes(time_requirement)) tags.push(time_requirement)
+
   demandData.tags_json = JSON.stringify(tags)
-  demandData.attributes_json = JSON.stringify({ module_codes: moduleCodes, city, cooperation_mode, work_mode, consultant_level, project_cycle, language_tag, time_requirement })
-  if (is_remote !== undefined) demandData.is_remote = is_remote
-  if (daily_rate) demandData.daily_rate = daily_rate
+  demandData.attributes_json = JSON.stringify({
+    module_codes: moduleCodes,
+    city,
+    cooperation_mode,
+    work_mode,
+    consultant_level,
+    project_cycle,
+    language_tag,
+    time_requirement,
+  })
+
+  // 如果有工作方式，添加到数据中
+  if (is_remote !== undefined) {
+    demandData.is_remote = is_remote
+  }
+  
+  // 如果有人天价格，添加到数据中
+  if (daily_rate) {
+    demandData.daily_rate = daily_rate
+  }
+
+  console.log('准备保存到数据库:', {
+    raw_text: demandData.raw_text.substring(0, 50) + '...',
+    module_codes: demandData.module_codes,
+    city: demandData.city,
+    provider_user_id: demandData.provider_user_id
+  })
+
   const token = await ensureApiToken().catch(() => '')
   const resp: any = await new Promise((resolve, reject) => {
-    const header: any = { 'Content-Type': 'application/json', 'x-uid': String(user.uid || ''), 'x-nickname': encodeURIComponent(String(user.nickname || '')) }
+    const header: any = {
+      'Content-Type': 'application/json',
+      'x-uid': String(user.uid || ''),
+      'x-nickname': encodeURIComponent(String(user.nickname || '')),
+    }
     if (token) header.Authorization = `Bearer ${token}`
-    uni.request({ url: `${API_BASE}/demands/ingest`, method: 'POST', data: demandData, header, success: (res) => resolve((res as any)?.data), fail: (err) => reject(err) })
+
+    uni.request({
+      url: `${API_BASE}/demands/ingest`,
+      method: 'POST',
+      data: demandData,
+      header,
+      success: (res) => resolve((res as any)?.data),
+      fail: (err) => reject(err),
+    })
   })
-  if (!resp || !resp.ok) throw new Error(String((resp && resp.error) || 'INGEST_FAILED'))
+
+  if (!resp || !resp.ok) {
+    throw new Error(String((resp && resp.error) || 'INGEST_FAILED'))
+  }
+
+  console.log('需求保存成功，ID:', String(resp.raw_id || ''))
   return resp
 }
 
+// 批量发布多条需求
 const handleBatchSubmit = async () => {
-  try { await requireNonGuestForPublish() } catch { return }
-  if (selectedDemands.value.size === 0) { uni.showToast({ title: '请至少选择一条需求', icon: 'none' }); return; }
+  try {
+    await requireNonGuestForPublish()
+  } catch {
+    return
+  }
+  if (selectedDemands.value.size === 0) {
+    uni.showToast({ title: '请至少选择一条需求', icon: 'none' })
+    return
+  }
+
   submitting.value = true
   try {
     await ensureLogin()
+
     const contactOk = await ensureContactMaintained()
-    if (!contactOk) { submitting.value = false; return; }
+    if (!contactOk) {
+      submitting.value = false
+      return
+    }
+    
     const selectedIndices = Array.from(selectedDemands.value).sort()
-    let successCount = 0, failCount = 0
+    let successCount = 0
+    let failCount = 0
+    let skippedCount = 0 // 跳过的重复需求数量
+    
+    // 批量发布选中的需求（已经过相似度检查，直接发布）
     for (const index of selectedIndices) {
       try {
         const demand = splitDemands.value[index]
-        if (!demand || !demand.canPublish) continue
+        if (!demand || !demand.canPublish) {
+          // 如果相似度过高，跳过（理论上不应该发生，因为UI已经过滤）
+          console.log(`跳过第 ${index + 1} 条需求：相似度过高或不可发布`)
+          skippedCount++
+          continue
+        }
+        
+        console.log(`正在发布第 ${index + 1} 条需求:`, demand.text.substring(0, 50) + '...')
+        
+        // 批量发布：每条需求独立解析，不使用表单数据
         await publishSingleDemand(demand.text, false)
+        
+        console.log(`第 ${index + 1} 条需求发布成功`)
         successCount++
-      } catch (e) { console.error(`发布第 ${index + 1} 条需求失败:`, e); failCount++; }
+      } catch (e) {
+        console.error(`发布第 ${index + 1} 条需求失败:`, e)
+        failCount++
+      }
     }
+    
+    // 计算积分（每条需求 +5 分）
     const publishPoints = getRewardPoints('publishDemand')
     if (publishPoints > 0 && successCount > 0) {
       const totalPoints = publishPoints * successCount
       await updateUserProfile({}, { addPoints: totalPoints })
+      console.log(`批量发布获得 ${totalPoints} 积分`)
     }
+    
     const filteredCount = splitDemands.value.filter(d => !d.canPublish).length
     let message = `成功发布 ${successCount} 条需求`
-    if (failCount > 0) message += `，${failCount} 条失败`
-    if (filteredCount > 0) message += `，${filteredCount} 条因相似度过高已过滤`
-    if (publishPoints > 0 && successCount > 0) message += `，获得 ${publishPoints * successCount} 积分`
-    uni.showToast({ title: message, icon: successCount > 0 ? 'success' : 'none', duration: 3000 })
-    setTimeout(() => { uni.reLaunch({ url: '/pages/demand/demand' }) }, 2000)
+    if (failCount > 0) {
+      message += `，${failCount} 条失败`
+    }
+    if (filteredCount > 0) {
+      message += `，${filteredCount} 条因相似度过高已过滤`
+    }
+    if (publishPoints > 0 && successCount > 0) {
+      message += `，获得 ${publishPoints * successCount} 积分`
+    }
+    
+    uni.showToast({
+      title: message,
+      icon: successCount > 0 ? 'success' : 'none',
+      duration: 3000
+    })
+
+    // 延迟跳转
+    setTimeout(() => {
+      uni.reLaunch({
+        url: '/pages/demand/demand'
+      })
+    }, 2000)
   } catch (e: any) {
     console.error('批量发布失败:', e)
-    uni.showToast({ title: e?.message || '批量发布失败，请重试', icon: 'none' })
-  } finally { submitting.value = false }
+    uni.showToast({
+      title: e?.message || '批量发布失败，请重试',
+      icon: 'none'
+    })
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
-
 <style scoped lang="scss">
 .page {
   display: flex;
@@ -1000,20 +1152,34 @@ const handleBatchSubmit = async () => {
   color: #FFFFFF !important;
   font-size: 32rpx;
   font-weight: 800;
+  letter-spacing: 2rpx;
+  flex: 1;
+  text-align: center;
 }
 
 .content {
   flex: 1;
-  padding: 24rpx;
+  padding: 16rpx 24rpx 24rpx;
   box-sizing: border-box;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* 确保子项在容器中居中 */
 }
 
+/* 独立块布局样式 */
 .publish-block {
   background: #ffffff;
   border-radius: 24rpx;
   padding: 32rpx;
   margin-bottom: 24rpx;
   box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  border: 1rpx solid #e5e7eb;
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%; /* 确保不超过容器宽度 */
 }
 
 .section {
@@ -1021,30 +1187,37 @@ const handleBatchSubmit = async () => {
 }
 
 .no-margin-bottom {
-  margin-bottom: 0;
+  margin-bottom: 0 !important;
+}
+
+.block-footer-actions {
+  margin-top: 32rpx;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .section-title {
-  display: block;
   font-size: 32rpx;
-  font-weight: 800;
-  color: #1e293b;
+  font-weight: 700;
+  color: #0b1924; /* 工业深蓝 */
+  display: block;
   margin-bottom: 8rpx;
 }
 
 .section-desc {
-  display: block;
   font-size: 24rpx;
   color: #64748b;
-  line-height: 1.5;
+  line-height: 1.6;
+  display: block;
+  margin-bottom: 16rpx;
 }
 
 .field-label {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1e293b;
   display: block;
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #334155;
-  margin-bottom: 16rpx;
+  margin-bottom: 12rpx;
 }
 
 .required {
@@ -1054,93 +1227,220 @@ const handleBatchSubmit = async () => {
 
 .field-input {
   width: 100%;
-  height: 88rpx;
+  padding: 16rpx 20rpx;
   background: #f8fafc;
-  border: 2rpx solid #e2e8f0;
+  border: 1rpx solid #e2e8f0;
   border-radius: 12rpx;
-  padding: 0 24rpx;
-  font-size: 28rpx;
-  color: #1e293b;
+  font-size: 24rpx;
+  color: #0f172a;
   box-sizing: border-box;
 }
 
 .field-textarea {
-  height: 240rpx;
-  padding: 24rpx;
+  min-height: 200rpx;
   line-height: 1.6;
 }
 
 .field-hint {
-  display: block;
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #94a3b8;
-  margin-top: 12rpx;
+  margin-top: 8rpx;
+  display: block;
 }
 
-.module-chips, .tag-chips {
+.module-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 16rpx;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
 }
 
-.module-chip, .tag-chip {
-  padding: 12rpx 28rpx;
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.tag-chip {
+  padding: 10rpx 24rpx;
   background: #f1f5f9;
-  border: 2rpx solid #e2e8f0;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 999rpx;
+  transition: all 0.2s;
+}
+
+.tag-chip--active {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  border-color: transparent;
+}
+
+.tag-chip-text {
+  font-size: 22rpx;
+  color: #475569;
+}
+
+.tag-chip--active .tag-chip-text {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.auto-rec-btn {
+  width: auto !important;
+  display: inline-block;
+  margin: 0 !important;
+  padding: 12rpx 32rpx;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+  border-radius: 8rpx;
+  border: none;
+  line-height: 1.5;
+  margin: 0;
+  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.2);
+}
+
+.auto-rec-btn:disabled {
+  opacity: 0.6;
+  background: #94a3b8;
+}
+
+.recognize-panel {
+  margin-top: 24rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+}
+
+.recognize-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex-wrap: wrap;
+}
+
+.recognize-label {
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.recognize-badge {
+  font-size: 22rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-weight: 600;
+}
+
+.recognize-badge--none {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.recognize-badge--medium {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.recognize-badge--high {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.recognize-detail {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.module-chip {
+  padding: 12rpx 24rpx;
+  background: #f1f5f9;
+  border: 1rpx solid #e2e8f0;
   border-radius: 12rpx;
   transition: all 0.2s;
 }
 
-.module-chip--active, .tag-chip--active {
-  background: #f0fdf4;
-  border-color: #22c55e;
+.module-chip--active {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  border-color: transparent;
 }
 
-.module-chip-text, .tag-chip-text {
-  font-size: 26rpx;
+.module-chip-text {
+  font-size: 22rpx;
   color: #475569;
-  font-weight: 500;
 }
 
-.module-chip--active .module-chip-text, .tag-chip--active .tag-chip-text {
-  color: #166534;
-  font-weight: 700;
+.module-chip--active .module-chip-text {
+  color: #FFFFFF;
+  font-weight: 600;
 }
 
-.block-footer-actions {
-  margin-top: 32rpx;
+.radio-group {
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  gap: 20rpx;
 }
 
-.auto-rec-btn {
-  margin: 0;
-  padding: 0 32rpx;
-  height: 64rpx;
-  line-height: 60rpx;
-  font-size: 24rpx;
-  color: #22c55e;
-  background: #ffffff;
-  border: 2rpx solid #22c55e;
-  border-radius: 32rpx;
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.radio {
+  width: 36rpx;
+  height: 36rpx;
+  border: 2rpx solid #d1d5db; /* 未选中状态中灰色 */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  background: #fff;
+}
+
+.radio--checked {
+  border-color: #4caf50;
+}
+
+.radio-dot {
+  width: 20rpx;
+  height: 20rpx;
+  background: #4caf50;
+  border-radius: 50%;
+}
+
+.radio-label {
+  font-size: 26rpx;
+  color: #334155;
 }
 
 .submit-btn {
   width: 100%;
-  height: 96rpx;
-  line-height: 96rpx;
-  background: #22c55e;
+  height: 88rpx;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #ffffff;
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 700;
-  border-radius: 48rpx;
-  margin-top: 40rpx;
-  box-shadow: 0 8rpx 24rpx rgba(34, 197, 94, 0.3);
+  border: none;
+  box-shadow: 0 4rpx 12rpx rgba(76, 175, 80, 0.3);
+}
+
+.submit-btn:active {
+  opacity: 0.9;
+  transform: translateY(2rpx);
 }
 
 .submit-btn[disabled] {
-  background: #94a3b8;
-  color: #ffffff;
+  background: #e2e8f0;
+  color: #94a3b8;
   box-shadow: none;
 }
 
@@ -1168,8 +1468,14 @@ const handleBatchSubmit = async () => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10rpx); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .auto-fill-text {
@@ -1178,6 +1484,7 @@ const handleBatchSubmit = async () => {
   line-height: 1.6;
 }
 
+/* 拆分预览样式适配浅色 */
 .split-preview {
   padding: 24rpx;
   background: #f8fafc;
@@ -1204,7 +1511,11 @@ const handleBatchSubmit = async () => {
   min-width: 300rpx;
 }
 
-.split-actions { display: flex; flex-direction: row; gap: 16rpx; }
+.split-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+}
 
 .split-action-btn {
   font-size: 24rpx;
@@ -1235,7 +1546,10 @@ const handleBatchSubmit = async () => {
   transition: all 0.2s;
 }
 
-.split-item--selected { background: #eff6ff; border-color: #3b82f6; }
+.split-item--selected {
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
 
 .split-item-checkbox {
   width: 40rpx;
@@ -1251,17 +1565,40 @@ const handleBatchSubmit = async () => {
   background: #fff;
 }
 
-.split-item--selected .split-item-checkbox { background: #3b82f6; border-color: #3b82f6; }
+.split-item--selected .split-item-checkbox {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
 
-.checkbox-checked { font-size: 24rpx; color: #fff; font-weight: bold; }
+.checkbox-checked {
+  font-size: 24rpx;
+  color: #fff;
+  font-weight: bold;
+}
 
-.split-item-text { flex: 1; font-size: 24rpx; color: #334155; line-height: 1.6; word-break: break-word; }
+.split-item-text {
+  flex: 1;
+  font-size: 24rpx;
+  color: #334155;
+  line-height: 1.6;
+  word-break: break-word;
+}
 
-.split-footer { display: flex; flex-direction: column; gap: 20rpx; }
+.split-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
 
-.split-count { font-size: 24rpx; color: #64748b; text-align: center; }
+.split-count {
+  font-size: 24rpx;
+  color: #64748b;
+  text-align: center;
+}
 
-.split-submit-btn { margin-top: 0; }
+.split-submit-btn {
+   margin-top: 0;
+}
 
 .similarity-warning {
   margin-bottom: 20rpx;
@@ -1271,37 +1608,104 @@ const handleBatchSubmit = async () => {
   border: 1rpx solid #fef3c7;
 }
 
-.similarity-warning-text { font-size: 22rpx; color: #b45309; line-height: 1.6; }
+.similarity-warning-text {
+  font-size: 22rpx;
+  color: #b45309;
+  line-height: 1.6;
+}
 
-.checking-similarity { padding: 60rpx 20rpx; text-align: center; }
+.checking-similarity {
+  padding: 60rpx 20rpx;
+  text-align: center;
+}
 
-.checking-text { font-size: 24rpx; color: #94a3b8; }
+.checking-text {
+  font-size: 24rpx;
+  color: #94a3b8;
+}
 
-.split-item-content { flex: 1; display: flex; flex-direction: column; gap: 12rpx; }
+.split-item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
 
-.split-item-meta { display: flex; flex-direction: row; align-items: center; gap: 16rpx; flex-wrap: wrap; }
+.split-item-meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  flex-wrap: wrap;
+}
 
-.split-item-tags { margin-top: 4rpx; }
+.split-item-tags {
+  margin-top: 4rpx;
+}
 
-.split-item-tags-text { font-size: 20rpx; color: #64748b; line-height: 1.5; }
+.split-item-tags-text {
+  font-size: 20rpx;
+  color: #64748b;
+  line-height: 1.5;
+}
 
-.similarity-badge { font-size: 20rpx; padding: 4rpx 16rpx; border-radius: 12rpx; font-weight: 500; }
+.similarity-badge {
+  font-size: 20rpx;
+  padding: 4rpx 16rpx;
+  border-radius: 12rpx;
+  font-weight: 500;
+}
 
-.similarity-badge--low { background: #dcfce7; color: #166534; }
+.similarity-badge--low {
+  background: #dcfce7;
+  color: #166534;
+}
 
-.similarity-badge--medium { background: #fef9c3; color: #854d0e; }
+.similarity-badge--medium {
+  background: #fef9c3;
+  color: #854d0e;
+}
 
-.similarity-badge--high { background: #fee2e2; color: #991b1b; }
+.similarity-badge--high {
+  background: #fee2e2;
+  color: #991b1b;
+}
 
-.same-user-tag { font-size: 18rpx; opacity: 0.8; }
+.same-user-tag {
+  font-size: 18rpx;
+  opacity: 0.8;
+}
 
-.cannot-publish-tag { font-size: 20rpx; color: #ef4444; font-weight: 600; }
+.cannot-publish-tag {
+  font-size: 20rpx;
+  color: #ef4444;
+  font-weight: 600;
+}
 
-.split-item--disabled { opacity: 0.6; background: #f8fafc; }
+.split-item--disabled {
+  opacity: 0.6;
+  background: #f8fafc;
+}
 
-.split-item-checkbox--disabled { background: #fee2e2; border-color: #ef4444; }
+.split-item-checkbox--disabled {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
 
-.checkbox-disabled { font-size: 24rpx; color: #ef4444; font-weight: bold; }
+.checkbox-disabled {
+  font-size: 24rpx;
+  color: #ef4444;
+  font-weight: bold;
+}
+.mini-margin-top {
+  margin-top: 12rpx;
+}
 
-.mini-margin-top { margin-top: 12rpx; }
-</style>
+ </style>
+
+
+
+
+
+
+

@@ -12,6 +12,7 @@ export type SapDemandRecord = {
   years_text: string
   language: string
   daily_rate?: string // 人天价格
+  richness_score?: number // 需求丰富度评分
   provider_name: string
   provider_user_id?: string // 信息提供者的用户ID，用于获取联系方式
   unique_demand_id?: string

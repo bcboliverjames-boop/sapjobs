@@ -1,6 +1,15 @@
 <template>
   <view class="page">
-    <view class="card">
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">服务条款</text>
+        <view class="header-right"></view>
+      </view>
+    </view>
+    <scroll-view class="content" scroll-y>
       <text class="h1">用户协议</text>
       <text class="meta">最后更新：待填写</text>
 
@@ -39,24 +48,92 @@
         <text class="h2">6. 联系方式</text>
         <text class="p">如对本协议有疑问或需要投诉举报，请前往“联系我们/投诉举报”页面。</text>
       </view>
-    </view>
+    </scroll-view>
   </view>
 </template>
 
-<style scoped>
-.page {
-  min-height: 100vh;
-  padding: 28rpx;
-  background: #F5F1E8;
-  color: #111827;
-  font-family: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+<script>
+const goBack = () => {
+  try {
+    const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
+    const current = pages && pages.length ? pages[pages.length - 1] : null
+    const route = String(current && (current.route || ''))
+    const isPlaza = /pages\/demand\/demand/i.test(route)
+    uni.navigateBack({
+      delta: 1,
+      fail: () => {
+        try {
+          uni.reLaunch({ url: isPlaza ? '/pages/index/index' : '/pages/demand/demand' })
+        } catch {
+          try {
+            uni.reLaunch({ url: '/pages/index/index' })
+          } catch {}
+        }
+      },
+    })
+  } catch {
+    try {
+      uni.reLaunch({ url: '/pages/demand/demand' })
+    } catch {
+      try {
+        uni.reLaunch({ url: '/pages/index/index' })
+      } catch {}
+    }
+  }
 }
 
-.card {
-  background: #FFFFFF;
-  border-radius: 20rpx;
-  padding: 26rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.08);
+onMounted(() => {
+  // ...
+})
+</script>
+
+<style scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #F5F1E8;
+  padding: 0;
+}
+
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
+.content {
+  flex: 1;
+  padding: 24rpx;
+  background: #F5F1E8;
 }
 
 .h1 {

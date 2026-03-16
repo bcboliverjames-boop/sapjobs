@@ -72,6 +72,54 @@ export function navigateTo(url: string, type: 'navigateTo' | 'redirectTo' | 'swi
   }
 }
 
+export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) {
+  const delta = Math.max(1, Number(opts?.delta || 1))
+  const preferUrl = String(opts?.preferUrl || '').trim()
+  const demandPlazaUrl = '/pages/demand/demand'
+  const homeUrl = '/pages/index/index'
+
+  const isOnDemandPlaza = (() => {
+    try {
+      const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : []) as any[]
+      const last = pages && pages.length ? pages[pages.length - 1] : null
+      const route = String(last?.route || '')
+      if (route) return /pages\/demand\/demand/i.test(route)
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        const h = String(window.location.hash || '')
+        if (h) return /\/pages\/demand\/demand/i.test(h)
+      }
+    } catch {}
+    return false
+  })()
+
+  const fallbackUrl = isOnDemandPlaza ? homeUrl : (preferUrl || demandPlazaUrl)
+
+  try {
+    uni.navigateBack({
+      delta,
+      fail: () => {
+        try {
+          uni.reLaunch({ url: fallbackUrl })
+        } catch {
+          try {
+            uni.reLaunch({ url: homeUrl })
+          } catch {}
+        }
+      },
+    })
+  } catch {
+    try {
+      uni.reLaunch({ url: fallbackUrl })
+    } catch {
+      try {
+        uni.reLaunch({ url: homeUrl })
+      } catch {}
+    }
+  }
+}
+
 /**
  * 获取系统信息
  */

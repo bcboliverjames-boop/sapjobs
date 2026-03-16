@@ -11,6 +11,8 @@ export interface PointsConfig {
     publishDemand: number // 发布需求
     comment: number // 发表评论
     commentLiked: number // 评论被点赞（每次）
+    markDemandStatus: number // 标记需求状态
+    markDemandReliability: number // 标记需求靠谱/不靠谱
   }
   
   // 积分消耗规则（减分，暂未使用，预留）
@@ -31,9 +33,11 @@ export const DEFAULT_POINTS_CONFIG: PointsConfig = {
   rewards: {
     register: 10, // 注册成功：+10 分
     completeProfile: 10, // 完善个人资料：+10 分
-    publishDemand: 5, // 发布需求：+5 分
+    publishDemand: 10, // 发布需求：+10 分
     comment: 1, // 发表评论：+1 分
     commentLiked: 1, // 评论被点赞：+1 分/次
+    markDemandStatus: 1, // 标记需求状态：+1 分
+    markDemandReliability: 1, // 标记需求评价：+1 分
   },
   costs: {
     viewContact: 0, // 查看联系方式：暂不扣分（预留）

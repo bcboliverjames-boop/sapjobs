@@ -14,6 +14,27 @@ dist
 *.local
 sap-message-capture/
 
+# Local backup / recovery artifacts (do not commit)
+/admin_*.*
+/password_*.*
+/publish_*.*
+/restore_script.ps1
+/test-richness.js
+
+# Demand page temp/backup artifacts
+src/pages/demand/*.bak
+src/pages/demand/*.tmp
+src/pages/demand/*.script
+src/pages/demand/detail.vue.bak*
+src/pages/demand/publish.vue.bak
+src/pages/demand/publish.vue.tmp
+src/pages/demand/publish_raw.vue
+src/pages/demand/demand.style.tmp
+src/pages/demand/demand.vue.script
+
+# Admin raw backup page (do not commit)
+src/pages/admin/index_raw.vue
+
 .vscode/
 .cursor/
 .windsurf/

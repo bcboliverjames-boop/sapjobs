@@ -1,64 +1,77 @@
 <template>
   <view class="login-container">
-    <view class="login-header">
-      <text class="title">邮箱登录</text>
-      <text class="subtitle">H5 仅支持邮箱 + 密码登录</text>
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">邮箱登录</text>
+        <view class="header-right"></view>
+      </view>
     </view>
     
-    <view class="login-form">
-      <!-- 邮箱输入 -->
-      <view class="input-group">
-        <text class="label">邮箱地址</text>
-        <input 
-          class="input-field"
-          type="text"
-          placeholder="请输入邮箱地址"
-          v-model="email"
-        />
+    <view class="login-content">
+      <view class="login-header">
+        <text class="title">邮箱登录</text>
+        <text class="subtitle">H5 仅支持邮箱 + 密码登录</text>
       </view>
-      <template v-if="!isH5">
-        <show-captcha />
-        <!-- 验证码输入 -->
+      
+      <view class="login-form">
+        <!-- 邮箱输入 -->
         <view class="input-group">
-          <text class="label">验证码</text>
-          <view class="verification-row">
-            <input 
-              class="input-field verification-input"
-              type="number"
-              placeholder="请输入验证码"
-              v-model="verificationCode"
-              maxlength="6"
-            />
-            <button 
-              class="get-code-btn"
-              :disabled="!isEmailValid || countdown > 0"
-              @click="getVerificationCode"
-            >
-              {{ countdown > 0 ? `${countdown}s后重试` : '获取验证码' }}
-            </button>
-          </view>
+          <text class="label">邮箱地址</text>
+          <input 
+            class="input-field"
+            type="text"
+            placeholder="请输入邮箱地址"
+            v-model="email"
+          />
         </view>
-      </template>
-      
-      <!-- 登录按钮 -->
-      <button 
-        class="login-btn"
-        :disabled="isH5 ? !isEmailValid : !canLogin"
-        @click="handleLogin"
-      >
-        {{ isH5 ? '下一步' : '登录' }}
-      </button>
-      
-      <!-- 返回链接 -->
-      <view class="back-login">
-        <text @click="goBack" class="link-text">返回密码登录</text>
+        
+        <template v-if="!isH5">
+          <!-- 验证码输入（仅小程序/APP支持，目前H5已关闭） -->
+          <view class="input-group">
+            <text class="label">验证码</text>
+            <view class="verification-row">
+              <input 
+                class="input-field verification-input"
+                type="number"
+                placeholder="请输入验证码"
+                v-model="verificationCode"
+                maxlength="6"
+              />
+              <button 
+                class="get-code-btn"
+                :disabled="!isEmailValid || countdown > 0"
+                @click="getVerificationCode"
+              >
+                {{ countdown > 0 ? `${countdown}s后重试` : '获取验证码' }}
+              </button>
+            </view>
+          </view>
+        </template>
+        
+        <!-- 登录按钮 -->
+        <button 
+          class="login-btn"
+          :disabled="isH5 ? !isEmailValid : !canLogin"
+          @click="handleLogin"
+        >
+          {{ isH5 ? '下一步' : '登录' }}
+        </button>
+        
+        <!-- 返回链接 -->
+        <view class="back-login">
+          <text @click="goBack" class="link-text">返回密码登录</text>
+        </view>
       </view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import { safeNavigateBack } from '../../utils'
 
 const isH5Runtime = () => {
   try {
@@ -71,31 +84,13 @@ const isH5Runtime = () => {
 const isH5 = isH5Runtime()
 
 const goBackOrHome = () => {
-  try {
-    uni.navigateBack({
-      delta: 1,
-      fail: () => {
-        try {
-          uni.reLaunch({ url: '/pages/index/index' })
-        } catch {}
-      },
-    })
-  } catch {
-    try {
-      uni.reLaunch({ url: '/pages/index/index' })
-    } catch {}
-  }
+  safeNavigateBack({ delta: 1 })
 }
 
 // 响应式数据
 const email = ref('')
 const verificationCode = ref('')
-const verificationInfo = ref<any>(null)
 const countdown = ref(0)
-const loading = ref(false)
-const loadingText = ref('')
-
-// 计时器
 let timer: any = null
 
 // 计算属性
@@ -126,22 +121,9 @@ const getVerificationCode = async () => {
     return
   }
   uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
-  return
 }
 
-// 开始倒计时
-const startCountdown = () => {
-  countdown.value = 60
-  timer = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      clearInterval(timer)
-      timer = null
-    }
-  }, 1000)
-}
-
-// 邮箱验证码登录
+// 邮箱登录处理
 const handleLogin = async () => {
   if (!isEmailValid.value) {
     uni.showToast({ title: '请输入正确的邮箱地址', icon: 'none' })
@@ -151,12 +133,12 @@ const handleLogin = async () => {
   goToPasswordLoginWithIdentifier(email.value)
 }
 
-// 返回登录方式选择
+// 返回密码登录
 const goBack = () => {
   try {
     uni.redirectTo({ url: '/pages/login/password-login' })
   } catch {
-    uni.navigateBack()
+    safeNavigateBack({ delta: 1 })
   }
 }
 
@@ -170,10 +152,49 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
+.login-content {
+  position: relative;
+  z-index: 1;
+}
+
 .login-container {
   min-height: 100vh;
-  background: #F3F4F6;
-  padding: 64rpx 36rpx 44rpx;
+  background: #F5F1E8;
+  padding: 0;
   box-sizing: border-box;
   color: #111827;
   font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
@@ -188,15 +209,19 @@ onUnmounted(() => {
   right: -220rpx;
   width: 520rpx;
   height: 520rpx;
-  background: rgba(37, 99, 235, 0.10);
+  background: rgba(11, 25, 36, 0.05);
   transform: rotate(18deg);
   border-radius: 120rpx;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .login-header {
   text-align: left;
   margin-bottom: 44rpx;
+  padding: 64rpx 36rpx 0;
   position: relative;
+  z-index: 1;
 }
 
 .title {
@@ -208,18 +233,21 @@ onUnmounted(() => {
 }
 
 .subtitle {
-  font-size: 26rpx;
+  font-size: 28rpx;
   color: rgba(17, 24, 39, 0.68);
   display: block;
+  line-height: 1.4;
 }
 
 .login-form {
   background: white;
   border-radius: 18rpx;
   padding: 60rpx 40rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.10);
+  margin: 0 36rpx 44rpx;
+  border: 2rpx solid rgba(11, 25, 36, 0.10);
   box-shadow: 0 14rpx 36rpx rgba(17, 24, 39, 0.08);
   position: relative;
+  z-index: 1;
 }
 
 .input-group {
@@ -243,6 +271,7 @@ onUnmounted(() => {
   font-size: 32rpx;
   box-sizing: border-box;
   background: #fafafa;
+  transition: all 0.3s ease;
 }
 
 .input-field:focus {
@@ -301,30 +330,5 @@ onUnmounted(() => {
   font-size: 28rpx;
   color: #2563EB;
   text-decoration: underline;
-}
-
-.loading-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.loading-content {
-  background: white;
-  padding: 40rpx 60rpx;
-  border-radius: 12rpx;
-  text-align: center;
-}
-
-.loading-content text {
-  font-size: 28rpx;
-  color: #333;
 }
 </style>

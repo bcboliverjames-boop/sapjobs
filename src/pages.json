@@ -3,14 +3,16 @@
 		{
 			"path": "pages/index/index",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "SAP 顾问需求广场",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
 		{
 			"path": "pages/demo/demo",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "云开发演示",
 				"navigationBarBackgroundColor": "#007aff",
 				"navigationBarTextStyle": "white"
@@ -19,54 +21,61 @@
 		{
 			"path": "pages/login/index",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "选择登录方式",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
 		{
 			"path": "pages/login/password-login",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "密码登录",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
 		{
 			"path": "pages/login/phone-login",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "手机验证码登录",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
 		{
 			"path": "pages/login/email-login",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "邮箱验证码登录",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
 		{
 			"path": "pages/login/register",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "注册",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
     {
 			"path": "pages/profile/profile",
 			"style": {
+				"navigationStyle": "custom",
 				"navigationBarTitleText": "用户信息",
-				"navigationBarBackgroundColor": "#667eea",
+				"navigationBarBackgroundColor": "#0b1924",
 				"navigationBarTextStyle": "white"
 			}
 		},
     {
       "path": "pages/demand/demand",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "SAP 顾问需求广场",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -75,6 +84,7 @@
     {
       "path": "pages/demand/detail",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "需求详情",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -83,6 +93,7 @@
     {
       "path": "pages/demand/publish",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "发布需求",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -91,6 +102,7 @@
     {
       "path": "pages/message/list",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "我的私信",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -99,6 +111,7 @@
     {
       "path": "pages/message/chat",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "私信",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -107,6 +120,7 @@
     {
       "path": "pages/legal/privacy",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "隐私政策",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -115,6 +129,7 @@
     {
       "path": "pages/legal/terms",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "用户协议",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -123,6 +138,7 @@
     {
       "path": "pages/legal/contact",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "联系我们",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -131,6 +147,7 @@
     {
       "path": "pages/legal/report",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "投诉举报",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -139,6 +156,7 @@
     {
       "path": "pages/legal/account-delete",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "注销与删除申请",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -147,6 +165,7 @@
     {
       "path": "pages/legal/delete",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "注销与删除申请",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -155,6 +174,7 @@
     {
       "path": "pages/admin/index",
       "style": {
+        "navigationStyle": "custom",
         "navigationBarTitleText": "后台管理",
         "navigationBarBackgroundColor": "#0b1924",
         "navigationBarTextStyle": "white"
@@ -162,10 +182,11 @@
     }
 	],
 	"globalStyle": {
+		"navigationStyle": "custom",
 		"navigationBarTextStyle": "white",
 		"navigationBarTitleText": "SAP 顾问需求广场",
-		"navigationBarBackgroundColor": "#667eea",
-		"backgroundColor": "#f5f5f5"
+		"navigationBarBackgroundColor": "#0b1924",
+		"backgroundColor": "#F5F1E8"
 	},
 	"easycom": {
 	"autoscan": true,

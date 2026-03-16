@@ -1,80 +1,92 @@
 <template>
   <view class="login-container">
-    <view class="login-header">
-      <text class="title">注册</text>
-      <text class="subtitle">手机号 / 邮箱 / 用户名（三选一）+ 密码</text>
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">注册账号</text>
+        <view class="header-right"></view>
+      </view>
     </view>
-
-    <view class="login-form">
-      <view class="input-hint">
-        <text class="hint-text">支持以下格式：手机号、邮箱地址、用户名</text>
+    
+    <view class="login-content">
+      <view class="login-header">
+        <text class="title">注册</text>
+        <text class="subtitle">手机号 / 邮箱 / 用户名（三选一）+ 密码</text>
       </view>
 
-      <view class="input-group">
-        <text class="label">账号</text>
-        <input
-          class="input-field"
-          type="text"
-          placeholder="请输入手机号/邮箱/用户名"
-          v-model="identifier"
-          @input="onIdentifierInput"
-        />
-        <view v-if="identifierType" class="input-type-indicator">
-          <text class="type-text">{{ identifierType }}</text>
+      <view class="login-form">
+        <view class="input-hint">
+          <text class="hint-text">支持以下格式：手机号、邮箱地址、用户名</text>
         </view>
-      </view>
 
-      <view class="input-group">
-        <text class="label">密码</text>
-        <view class="password-input-container">
+        <view class="input-group">
+          <text class="label">账号</text>
           <input
-            class="input-field password-input"
-            :type="showPassword ? 'text' : 'password'"
-            placeholder="请输入密码（至少 6 位）"
-            v-model="password"
+            class="input-field"
+            type="text"
+            placeholder="请输入手机号/邮箱/用户名"
+            v-model="identifier"
+            @input="onIdentifierInput"
           />
-          <button class="toggle-password-btn" @click="togglePassword">
-            {{ showPassword ? '隐藏' : '显示' }}
-          </button>
-        </view>
-      </view>
-
-      <view class="input-group">
-        <text class="label">确认密码</text>
-        <input
-          class="input-field"
-          :type="showPassword ? 'text' : 'password'"
-          placeholder="请再次输入密码"
-          v-model="confirmPassword"
-        />
-      </view>
-
-      <view class="input-group">
-        <text class="label">职业 <text class="required">*</text></text>
-        <picker :range="occupations" @change="onOccupationChange">
-          <view class="input-field" style="display:flex;align-items:center;">
-            <text style="color: #111827;">{{ occupation || '请选择职业' }}</text>
+          <view v-if="identifierType" class="input-type-indicator">
+            <text class="type-text">{{ identifierType }}</text>
           </view>
-        </picker>
-      </view>
+        </view>
 
-      <view v-if="occupation === '需求发布者'" class="input-group">
-        <text class="label">微信号（必填其一）</text>
-        <input class="input-field" type="text" placeholder="请输入微信号" v-model="wechatId" />
-      </view>
+        <view class="input-group">
+          <text class="label">密码</text>
+          <view class="password-input-container">
+            <input
+              class="input-field password-input"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="请输入密码（至少 6 位）"
+              v-model="password"
+            />
+            <button class="toggle-password-btn" @click="togglePassword">
+              {{ showPassword ? '隐藏' : '显示' }}
+            </button>
+          </view>
+        </view>
 
-      <view v-if="occupation === '需求发布者'" class="input-group">
-        <text class="label">QQ号（必填其一）</text>
-        <input class="input-field" type="text" placeholder="请输入QQ号" v-model="qqId" />
-      </view>
+        <view class="input-group">
+          <text class="label">确认密码</text>
+          <input
+            class="input-field"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="请再次输入密码"
+            v-model="confirmPassword"
+          />
+        </view>
 
-      <button class="login-btn" :disabled="!canSubmit" @click="handleRegister">
-        {{ loading ? '注册中...' : '注册并登录' }}
-      </button>
+        <view class="input-group">
+          <text class="label">职业 <text class="required">*</text></text>
+          <picker :range="occupations" @change="onOccupationChange">
+            <view class="input-field" style="display:flex;align-items:center;">
+              <text style="color: #111827;">{{ occupation || '请选择职业' }}</text>
+            </view>
+          </picker>
+        </view>
 
-      <view class="quick-links">
-        <text @tap="goToLogin" class="link-text">已有账号？去登录</text>
-        <text @tap="goBack" class="link-text">返回</text>
+        <view v-if="occupation === '需求发布者'" class="input-group">
+          <text class="label">微信号（必填其一）</text>
+          <input class="input-field" type="text" placeholder="请输入微信号" v-model="wechatId" />
+        </view>
+
+        <view v-if="occupation === '需求发布者'" class="input-group">
+          <text class="label">QQ号（必填其一）</text>
+          <input class="input-field" type="text" placeholder="请输入QQ号" v-model="qqId" />
+        </view>
+
+        <button class="login-btn" :disabled="!canSubmit" @click="handleRegister">
+          {{ loading ? '注册中...' : '注册并登录' }}
+        </button>
+
+        <view class="quick-links">
+          <text @tap="goToLogin" class="link-text">已有账号？去登录</text>
+          <text @tap="goBack" class="link-text">返回</text>
+        </view>
       </view>
     </view>
 
@@ -89,22 +101,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { registerWithPassword } from '../../utils/user'
+import { safeNavigateBack } from '../../utils'
 
 const goBackOrHome = () => {
-  try {
-    uni.navigateBack({
-      delta: 1,
-      fail: () => {
-        try {
-          uni.reLaunch({ url: '/pages/index/index' })
-        } catch {}
-      },
-    })
-  } catch {
-    try {
-      uni.reLaunch({ url: '/pages/index/index' })
-    } catch {}
-  }
+  safeNavigateBack({ delta: 1 })
 }
 
 const redirectToPasswordLogin = (prefill?: string) => {
@@ -199,6 +199,7 @@ const handleRegister = async () => {
       occupation: occupation.value,
       wechat_id: wechatId.value.trim(),
       qq_id: qqId.value.trim(),
+      can_share_contact: true,
     })
 
     uni.showToast({ title: '注册成功', icon: 'success' })
@@ -221,15 +222,54 @@ const goToLogin = () => {
 }
 
 const goBack = () => {
-  uni.navigateBack()
+  safeNavigateBack({ delta: 1 })
 }
 </script>
 
 <style scoped>
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
+.login-content {
+  position: relative;
+  z-index: 1;
+}
+
 .login-container {
   min-height: 100vh;
-  background: #F3F4F6;
-  padding: 64rpx 36rpx 44rpx;
+  background: #F5F1E8;
+  padding: 0;
   box-sizing: border-box;
   color: #111827;
   font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
@@ -244,15 +284,19 @@ const goBack = () => {
   right: -220rpx;
   width: 520rpx;
   height: 520rpx;
-  background: rgba(37, 99, 235, 0.10);
+  background: rgba(11, 25, 36, 0.05);
   transform: rotate(18deg);
   border-radius: 120rpx;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .login-header {
   text-align: left;
   margin-bottom: 44rpx;
+  padding: 64rpx 36rpx 0;
   position: relative;
+  z-index: 1;
 }
 
 .title {
@@ -274,9 +318,11 @@ const goBack = () => {
   background: white;
   border-radius: 18rpx;
   padding: 60rpx 40rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.10);
+  margin: 0 36rpx 44rpx;
+  border: 2rpx solid rgba(11, 25, 36, 0.10);
   box-shadow: 0 14rpx 36rpx rgba(17, 24, 39, 0.08);
   position: relative;
+  z-index: 1;
 }
 
 .input-hint {
@@ -324,7 +370,25 @@ const goBack = () => {
   box-shadow: 0 0 0 4rpx rgba(37, 99, 235, 0.10);
 }
 
+.input-type-indicator {
+  position: absolute;
+  right: 20rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 14rpx;
+}
+
+.type-text {
+  font-size: 20rpx;
+  color: #2563EB;
+  background: rgba(37, 99, 235, 0.10);
+  padding: 8rpx 16rpx;
+  border-radius: 20rpx;
+  font-weight: 500;
+}
+
 .password-input-container {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12rpx;
@@ -345,21 +409,6 @@ const goBack = () => {
   color: rgba(17, 24, 39, 0.72);
 }
 
-.input-type-indicator {
-  position: absolute;
-  right: 18rpx;
-  bottom: 18rpx;
-  padding: 8rpx 14rpx;
-  border-radius: 999rpx;
-  background: rgba(37, 99, 235, 0.10);
-}
-
-.type-text {
-  font-size: 22rpx;
-  color: #2563EB;
-  font-weight: 700;
-}
-
 .login-btn {
   width: 100%;
   height: 92rpx;
@@ -372,7 +421,7 @@ const goBack = () => {
   margin-top: 10rpx;
 }
 
-.login-btn[disabled] {
+.login-btn:disabled {
   opacity: 0.55;
 }
 

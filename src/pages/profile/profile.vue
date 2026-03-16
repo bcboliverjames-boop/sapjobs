@@ -1,7 +1,13 @@
 <template>
   <view class="profile-container">
-    <view class="profile-header">
-      <text class="title">个人中心</text>
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">个人中心</text>
+        <view class="header-right"></view>
+      </view>
     </view>
     
     <view class="profile-content">
@@ -23,119 +29,123 @@
         <view class="tab-content">
           <!-- Tab 1: 我的资料 -->
           <view v-if="activeTab === 'profile'" class="tab-panel">
-        <view class="section">
-          <text class="section-title">账号信息</text>
-          <view class="info-item">
-            <text class="label">用户ID:</text>
-            <text class="value">{{ userInfo.uid || '未知' }}</text>
-          </view>
-          <view v-if="accountInfo && accountInfo.identifier_masked" class="info-item">
-            <text class="label">登录账号:</text>
-            <text class="value">{{ accountInfo.identifier_masked }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">手机号</text>
-            <input class="input" v-model="accountForm.phone" placeholder="请输入手机号" />
-          </view>
-          <view class="info-item">
-            <text class="label">邮箱</text>
-            <input class="input" v-model="accountForm.email" placeholder="请输入邮箱" />
-          </view>
-          <view v-if="userInfo.phone_number" class="info-item">
-            <text class="label">手机号:</text>
-            <text class="value">{{ userInfo.phone_number }}</text>
-          </view>
-          <view v-if="userInfo.email" class="info-item">
-            <text class="label">邮箱:</text>
-            <text class="value">{{ userInfo.email }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">创建时间:</text>
-            <text class="value">{{ formatDate(userInfo.createTime) }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">最后登录:</text>
-            <text class="value">{{ formatDate(userInfo.lastLoginTime) }}</text>
-          </view>
-        </view>
-
-        <view class="section">
-          <text class="section-title">个人资料（用于积分与标签）</text>
-          <view class="info-item">
-            <text class="label">昵称</text>
-            <input class="input" v-model="profile.nickname" placeholder="方便记住你是谁" />
-          </view>
-          <view class="info-item">
-            <text class="label">擅长模块</text>
-            <input class="input" v-model="profile.expertise_modules" placeholder="例：FICO,MM,SD" />
-          </view>
-          <view class="info-item">
-            <text class="label">工作年限</text>
-            <input
-              class="input"
-              type="number"
-              v-model.number="profile.years_of_exp"
-              placeholder="例：5（年）"
-            />
-          </view>
-          <view class="info-item">
-            <text class="label">职业</text>
-            <picker
-              :range="['SAP顾问', '需求发布者', '其他职业']"
-              @change="(e: any) => (profile.occupation = ['SAP顾问', '需求发布者', '其他职业'][Number(e?.detail?.value || 0)] || '')"
-            >
-              <view class="input">
-                <text>{{ profile.occupation || '请选择职业' }}</text>
+            <view class="profile-main-block">
+              <view class="section">
+                <text class="section-title">账号信息</text>
+                <view class="info-item">
+                  <text class="label">用户ID:</text>
+                  <text class="value">{{ userInfo.uid || '未知' }}</text>
+                </view>
+                <view v-if="accountInfo && accountInfo.identifier_masked" class="info-item">
+                  <text class="label">登录账号:</text>
+                  <text class="value">{{ accountInfo.identifier_masked }}</text>
+                </view>
+                <view class="info-item">
+                  <text class="label">手机号</text>
+                  <input class="input" v-model="accountForm.phone" placeholder="请输入手机号" />
+                </view>
+                <view class="info-item">
+                  <text class="label">邮箱</text>
+                  <input class="input" v-model="accountForm.email" placeholder="请输入邮箱" />
+                </view>
+                <view v-if="userInfo.phone_number" class="info-item">
+                  <text class="label">手机号:</text>
+                  <text class="value">{{ userInfo.phone_number }}</text>
+                </view>
+                <view v-if="userInfo.email" class="info-item">
+                  <text class="label">邮箱:</text>
+                  <text class="value">{{ userInfo.email }}</text>
+                </view>
+                <view class="info-item">
+                  <text class="label">创建时间:</text>
+                  <text class="value">{{ formatDate(userInfo.createTime) }}</text>
+                </view>
+                <view class="info-item">
+                  <text class="label">最后登录:</text>
+                  <text class="value">{{ formatDate(userInfo.lastLoginTime) }}</text>
+                </view>
               </view>
-            </picker>
-          </view>
-        </view>
 
-        <view class="section">
-          <text class="section-title">联系方式（用于需求卡片解锁）</text>
-          <view class="info-item">
-            <text class="label">微信号</text>
-            <input class="input" v-model="profile.wechat_id" placeholder="可选，解锁后展示" />
-          </view>
-          <view class="info-item">
-            <text class="label">QQ号</text>
-            <input class="input" v-model="profile.qq_id" placeholder="可选，解锁后展示" />
-          </view>
-          <view class="info-item switch-row">
-            <text class="label">允许展示联系方式</text>
-            <switch :checked="profile.can_share_contact" @change="onShareContactChange" />
-          </view>
-        </view>
+              <view class="section">
+                <text class="section-title">个人资料（用于积分与标签）</text>
+                <view class="info-item">
+                  <text class="label">昵称</text>
+                  <input class="input" v-model="profile.nickname" placeholder="方便记住你是谁" />
+                </view>
+                <view class="info-item">
+                  <text class="label">擅长模块</text>
+                  <input class="input" v-model="profile.expertise_modules" placeholder="例：FICO,MM,SD" />
+                </view>
+                <view class="info-item">
+                  <text class="label">工作年限</text>
+                  <input
+                    class="input"
+                    type="number"
+                    v-model.number="profile.years_of_exp"
+                    placeholder="例：5（年）"
+                  />
+                </view>
+                <view class="info-item">
+                  <text class="label">职业</text>
+                  <picker
+                    :range="['SAP顾问', '需求发布者', '其他职业']"
+                    @change="(e: any) => (profile.occupation = ['SAP顾问', '需求发布者', '其他职业'][Number(e?.detail?.value || 0)] || '')"
+                  >
+                    <view class="input">
+                      <text>{{ profile.occupation || '请选择职业' }}</text>
+                    </view>
+                  </picker>
+                </view>
+              </view>
 
-        <view class="section">
-          <text class="section-title">积分</text>
-          <view class="points-row">
-            <text class="points-value">{{ profile.points }}</text>
-            <text class="points-desc">积分达到 {{ getThresholdPoints('viewContact') }} 分即可解锁他人联系方式查看权限</text>
-          </view>
-        </view>
+              <view class="section">
+                <text class="section-title">联系方式（用于需求卡片解锁）</text>
+                <view class="info-item">
+                  <text class="label">微信号</text>
+                  <input class="input" v-model="profile.wechat_id" placeholder="可选，解锁后展示" />
+                </view>
+                <view class="info-item">
+                  <text class="label">QQ号</text>
+                  <input class="input" v-model="profile.qq_id" placeholder="可选，解锁后展示" />
+                </view>
+                <view class="info-item switch-row">
+                  <text class="label">允许展示联系方式</text>
+                  <switch :checked="profile.can_share_contact" @change="onShareContactChange" />
+                </view>
+              </view>
 
-        <view v-if="isAdmin" class="section">
-          <text class="section-title">后台管理</text>
-          <button class="primary-btn" @click="goToAdmin" style="margin-top: 14rpx;">
-            进入后台管理
-          </button>
-        </view>
+              <view class="section">
+                <text class="section-title">积分</text>
+                <view class="points-row">
+                  <text class="points-value">{{ profile.points }}</text>
+                  <text class="points-desc">积分达到 {{ getThresholdPoints('viewContact') }} 分即可解锁他人联系方式查看权限</text>
+                </view>
+              </view>
 
-        <button class="primary-btn" @click="saveProfile" :disabled="saving">
-          {{ saving ? '保存中...' : '保存资料并获取积分' }}
-        </button>
+              <view v-if="isAdmin" class="section">
+                <text class="section-title">后台管理</text>
+                <button class="primary-btn" @click="goToAdmin" style="margin-top: 14rpx;">
+                  进入后台管理
+                </button>
+              </view>
 
-            <button class="logout-btn" @click="handleLogout">
-              退出登录
-            </button>
-          </view>
+              <view class="action-buttons">
+                <button class="primary-btn" @click="saveProfile" :disabled="saving">
+                  {{ saving ? '保存中...' : '保存资料并获取积分' }}
+                </button>
 
-          <view v-if="activeTab === 'profile'" class="section">
-            <text class="section-title">合规与申诉</text>
-            <button class="primary-btn" @click="goToAccountDelete" style="margin-top: 14rpx;">
-              账号注销 / 个人信息删除申请
-            </button>
+                <button class="logout-btn" @click="handleLogout">
+                  退出登录
+                </button>
+              </view>
+            </view>
+
+            <view class="section">
+              <text class="section-title">合规与申诉</text>
+              <button class="primary-btn" @click="goToAccountDelete" style="margin-top: 14rpx;">
+                账号注销 / 个人信息删除申请
+              </button>
+            </view>
           </view>
 
           <!-- Tab 2: 我发布的需求 -->
@@ -215,7 +225,7 @@ import { ref, onMounted, watch } from 'vue'
 import { logout, ensureLogin } from '../../utils/cloudbase'
 import { getLastLoginIdentifier, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile, type UserProfile } from '../../utils/user'
 import { getRewardPoints, getThresholdPoints } from '../../utils/points-config'
-import { navigateTo } from '../../utils'
+import { navigateTo, safeNavigateBack } from '../../utils'
 import { isAdminUid } from '../../utils/admin'
 
 function getApiBase(): string {
@@ -279,7 +289,7 @@ const profile = ref<UserProfile>({
   wechat_id: '',
   qq_id: '',
   occupation: '',
-  can_share_contact: false,
+  can_share_contact: true,
 })
 const saving = ref(false)
 
@@ -342,6 +352,10 @@ function getH5ApiBasesForRetry(base: string): string[] {
   return Array.from(new Set(out.filter(Boolean)))
 }
 
+const goBack = () => {
+  safeNavigateBack({ delta: 1 })
+}
+
 // 获取用户信息
 const getUserInfo = async () => {
   try {
@@ -374,6 +388,11 @@ const getUserInfo = async () => {
       profile.value = {
         ...profile.value,
         ...prof,
+      }
+
+      // 兼容老数据/缺省字段：默认允许展示联系方式
+      if ((profile.value as any).can_share_contact === undefined || (profile.value as any).can_share_contact === null) {
+        profile.value.can_share_contact = true
       }
       // 如果当前在对应的 Tab，加载数据
       watchTab()
@@ -664,6 +683,63 @@ const loadMyFavorites = async () => {
         }
       })
       .filter((x: any) => x && x.unique_demand_id)
+
+    const missingTextIds = myFavorites.value
+      .filter((x: any) => x && x.unique_demand_id && String(x.demand_text || '').trim() === '需求已删除')
+      .map((x: any) => String(x.unique_demand_id || '').trim())
+      .filter(Boolean)
+      .slice(0, 50)
+
+    if (missingTextIds.length) {
+      const enrichBases = (() => {
+        const out = [...bases]
+        try {
+          if (typeof window !== 'undefined') {
+            const host = String(window.location && window.location.hostname)
+            if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
+              out.push('http://127.0.0.1:3001')
+              out.push('http://localhost:3001')
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return Array.from(new Set(out.map((x) => String(x || '').trim()).filter(Boolean)))
+      })()
+
+      for (const base of enrichBases) {
+        try {
+          const baseTrim = String(base).replace(/\/+$/, '')
+          let updatedAny = false
+          await Promise.all(
+            missingTextIds.map(async (id) => {
+              try {
+                const resp: any = await requestJson({
+                  url: `${baseTrim}/unique_demands/${encodeURIComponent(id)}`,
+                  method: 'GET',
+                  header,
+                })
+                if (resp && resp.ok && resp.demand) {
+                  const raw = String(resp.demand.raw_text || '').trim()
+                  if (raw) {
+                    const hit = myFavorites.value.find((it: any) => String(it.unique_demand_id || '').trim() === id)
+                    if (hit) {
+                      hit.demand_text = raw
+                      updatedAny = true
+                    }
+                  }
+                }
+              } catch {
+                // ignore
+              }
+            }),
+          )
+          if (updatedAny) break
+        } catch {
+          // try next base
+        }
+      }
+    }
   } catch (e) {
     console.error('加载我的收藏失败:', e)
     myFavorites.value = []
@@ -678,8 +754,10 @@ const watchTab = () => {
   
   if (activeTab.value === 'demands' && myDemands.value.length === 0) {
     loadMyDemands()
-  } else if (activeTab.value === 'favorites' && myFavorites.value.length === 0) {
-    loadMyFavorites()
+  } else if (activeTab.value === 'favorites') {
+    if (!myFavoritesLoading.value) {
+      loadMyFavorites()
+    }
   }
 }
 
@@ -721,12 +799,12 @@ const formatFavoriteTime = (timestamp: any) => {
 const goToDemandDetail = (demandOrId: any) => {
   const rawId = String(typeof demandOrId === 'string' ? demandOrId : (demandOrId && (demandOrId.id || demandOrId._id)) || '').trim()
   const uniqueId = String(typeof demandOrId === 'object' && demandOrId ? (demandOrId.unique_demand_id || (demandOrId as any).uniqueId) : '').trim()
-  if (/^\d+$/.test(rawId)) {
-    navigateTo(`/pages/demand/detail?id=${encodeURIComponent(rawId)}`)
-    return
-  }
   if (uniqueId) {
     navigateTo(`/pages/demand/detail?uniqueId=${encodeURIComponent(uniqueId)}`)
+    return
+  }
+  if (/^\d+$/.test(rawId)) {
+    navigateTo(`/pages/demand/detail?id=${encodeURIComponent(rawId)}`)
     return
   }
   if (rawId) {
@@ -758,28 +836,49 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left, .header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
 .profile-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 40rpx;
-}
-
-.profile-header {
-  text-align: center;
-  margin-bottom: 60rpx;
-}
-
-.title {
-  font-size: 48rpx;
-  font-weight: bold;
-  color: white;
+  background: #F5F1E8;
+  padding: 0;
 }
 
 .profile-content {
-  background: white;
-  border-radius: 20rpx;
-  padding: 40rpx;
-  box-shadow: 0 20rpx 40rpx rgba(0, 0, 0, 0.1);
+  background: #F5F1E8;
+  padding: 24rpx;
 }
 
 .user-info {
@@ -788,14 +887,32 @@ onMounted(() => {
   gap: 30rpx;
 }
 
+.profile-main-block {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 32rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  border: 1rpx solid #e5e7eb;
+}
+
+.action-buttons {
+  margin-top: 40rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
 .section {
   border-bottom: 1rpx solid #f0f0f0;
-  padding-bottom: 20rpx;
+  padding-bottom: 32rpx;
+  margin-bottom: 32rpx;
 }
 
 .section:last-of-type {
   border-bottom: none;
   padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .section-title {

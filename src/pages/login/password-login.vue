@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <view class="login-container">
     <view class="login-header">
       <text class="title">密码登录</text>
@@ -53,6 +53,8 @@
       
       <!-- 快捷链接 -->
       <view class="quick-links">
+        <navigator url="/pages/login/phone-login" class="link-text">手机验证码登录</navigator>
+        <navigator url="/pages/login/email-login" class="link-text">邮箱验证码登录</navigator>
         <navigator url="/pages/login/register" class="link-text">注册</navigator>
       </view>
     </view>
@@ -70,22 +72,10 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { loginWithPassword } from '../../utils/user'
+import { safeNavigateBack } from '../../utils'
 
 const goBackOrHome = () => {
-  try {
-    uni.navigateBack({
-      delta: 1,
-      fail: () => {
-        try {
-          uni.reLaunch({ url: '/pages/index/index' })
-        } catch {}
-      },
-    })
-  } catch {
-    try {
-      uni.reLaunch({ url: '/pages/index/index' })
-    } catch {}
-  }
+  safeNavigateBack({ delta: 1 })
 }
 
 // 响应式数据
@@ -101,14 +91,12 @@ onLoad((query: any) => {
   try {
     const raw = query && (query.identifier || query.username || query.account)
     const next = String(raw || '').trim()
-    if (!next) return
-    username.value = decodeURIComponent(next)
-    onUsernameInput()
-  } catch {
-    // ignore
-  }
+    if (next) {
+      username.value = decodeURIComponent(next)
+      onUsernameInput()
+    }
 
-  try {
+    // 解析重定向地址
     const r = query && (query.redirect || query.r)
     const url = String(r || '').trim()
     if (url) {
@@ -198,19 +186,16 @@ const handleLogin = async () => {
       icon: 'success'
     })
     
-    // 延迟跳转到需求广场（或指定回跳地址）
+    // 延迟跳转
     setTimeout(() => {
-      const target = String(redirectUrl.value || '').trim() || '/pages/demand/demand'
-      try {
-        uni.reLaunch({ url: target })
-      } catch {
-        try {
-          uni.redirectTo({ url: target })
-        } catch {
-          goBackOrHome()
-        }
+      if (redirectUrl.value) {
+        uni.reLaunch({
+          url: redirectUrl.value
+        })
+      } else {
+        goBackOrHome()
       }
-    }, 1500)
+    }, 300)
     
   } catch (error: any) {
     console.error('登录失败:', error)
@@ -234,6 +219,14 @@ const handleLogin = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const goToPhoneLogin = () => {
+  uni.navigateTo({ url: '/pages/login/phone-login' })
+}
+
+const goToEmailLogin = () => {
+  uni.navigateTo({ url: '/pages/login/email-login' })
 }
 
 const goToRegister = () => {
@@ -410,7 +403,7 @@ const goToRegister = () => {
 
 .quick-links {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   margin-top: 40rpx;
   position: relative;
   z-index: 2;

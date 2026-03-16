@@ -1,149 +1,156 @@
 <template>
   <view class="page">
-    <view class="hero">
-      <view class="hero-top-actions">
-        <view class="icon-btn" @click="goToAccount">
-          <uni-icons type="person" size="18" color="#F5F1E8" />
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left"></view>
+        <text class="page-header-title">SAP 顾问需求广场</text>
+        <view class="header-right">
+          <view class="icon-btn" @click="goToAccount">
+            <uni-icons type="person" size="18" color="#F5F1E8" />
+          </view>
         </view>
       </view>
+    </view>
 
-      <view class="hero-left">
-        <view class="hero-kicker">
-          <uni-icons type="map" size="16" color="#14B8A6" />
-          <text class="hero-kicker-text">SAP 顾问需求广场</text>
-        </view>
-
-        <view class="hero-actions">
-          <button class="btn btn-primary" @click="goToDemand">进入需求广场</button>
-          <button class="btn btn-ghost" :class="{ 'guest-disabled': isGuest }" :disabled="isGuest" @click="goToPublish">发布需求</button>
-        </view>
-
-        <view class="insights insights--hero">
-          <view class="insights-head">
-            <text class="insights-title">需求洞察</text>
-            <text class="insights-sub">{{ insightsSubText }}</text>
+    <view class="hero">
+      <view class="hero-content">
+        <view class="hero-left">
+          <view class="hero-kicker">
+            <uni-icons type="map" size="16" color="#14B8A6" />
+            <text class="hero-kicker-text">SAP 顾问需求广场</text>
           </view>
 
-          <view class="ring-row">
-            <view class="ring-slot">
-              <view class="ring ring--today" @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'UPDATED' })">
-                <text class="ring-label">今日需求</text>
-                <text class="ring-value">{{ todayDemandText }}</text>
-                <text class="ring-yoy" :class="todayDemandYoyClass">同比 {{ todayDemandYoyText }}</text>
-              </view>
-            </view>
-            <view class="ring-slot">
-              <view class="ring ring--today-new" @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'CREATED' })">
-                <text class="ring-label">今日上新</text>
-                <text class="ring-value">{{ todayNewArrivalsText }}</text>
-                <text class="ring-yoy" :class="todayNewYoyClass">同比 {{ todayNewYoyText }}</text>
-              </view>
-            </view>
-            <view class="ring-slot">
-              <view class="ring ring--week-new" @click="goToDemandWithQuery({ timeRange: 'WEEK', timeField: 'CREATED' })">
-                <text class="ring-label">本周上新</text>
-                <text class="ring-value">{{ weekNewArrivalsText }}</text>
-                <text class="ring-yoy" :class="weekNewYoyClass">同比 {{ weekNewYoyText }}</text>
-              </view>
-            </view>
+          <view class="hero-actions">
+            <button class="btn btn-primary" @click="goToDemand">进入需求广场</button>
+            <button class="btn btn-ghost" :class="{ 'guest-disabled': isGuest }" :disabled="isGuest" @click="goToPublish">发布需求</button>
           </view>
 
-          <view class="module-chart">
-            <view class="module-head">
-              <text class="module-title">今日模块需求</text>
-              <text class="module-meta">{{ moduleChartMetaText }}</text>
+          <view class="insights insights--hero">
+            <view class="insights-head">
+              <text class="insights-title">需求洞察</text>
+              <text class="insights-sub">{{ insightsSubText }}</text>
             </view>
-            <view class="module-bars">
-              <view class="module-bars-inner">
-                <view
-                  v-for="m in todayModuleBars"
-                  :key="m.module"
-                  class="module-col"
-                  @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'UPDATED', module: m.module })"
-                >
-                  <view class="module-bar" :class="{ 'module-bar--empty': !m.count }">
-                    <view class="module-bar-fill" :style="{ height: m.heightRpx + 'rpx' }" />
-                    <text class="module-bar-count">{{ m.count }}</text>
+
+            <view class="ring-row">
+              <view class="ring-slot">
+                <view class="ring ring--today" @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'UPDATED' })">
+                  <text class="ring-label">今日需求</text>
+                  <text class="ring-value">{{ todayDemandText }}</text>
+                  <text class="ring-yoy" :class="todayDemandYoyClass">同比 {{ todayDemandYoyText }}</text>
+                </view>
+              </view>
+              <view class="ring-slot">
+                <view class="ring ring--today-new" @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'CREATED' })">
+                  <text class="ring-label">今日上新</text>
+                  <text class="ring-value">{{ todayNewArrivalsText }}</text>
+                  <text class="ring-yoy" :class="todayNewYoyClass">同比 {{ todayNewYoyText }}</text>
+                </view>
+              </view>
+              <view class="ring-slot">
+                <view class="ring ring--week-new" @click="goToDemandWithQuery({ timeRange: 'WEEK', timeField: 'CREATED' })">
+                  <text class="ring-label">本周上新</text>
+                  <text class="ring-value">{{ weekNewArrivalsText }}</text>
+                  <text class="ring-yoy" :class="weekNewYoyClass">同比 {{ weekNewYoyText }}</text>
+                </view>
+              </view>
+            </view>
+
+            <view class="module-chart">
+              <view class="module-head">
+                <text class="module-title">今日模块需求</text>
+                <text class="module-meta">{{ moduleChartMetaText }}</text>
+              </view>
+              <view class="module-bars">
+                <view class="module-bars-inner">
+                  <view
+                    v-for="m in todayModuleBars"
+                    :key="m.module"
+                    class="module-col"
+                    @click="goToDemandWithQuery({ timeRange: 'TODAY', timeField: 'UPDATED', module: m.module })"
+                  >
+                    <view class="module-bar" :class="{ 'module-bar--empty': !m.count }">
+                      <view class="module-bar-fill" :style="{ height: m.heightRpx + 'rpx' }" />
+                      <text class="module-bar-count">{{ m.count }}</text>
+                    </view>
+                    <text class="module-name">{{ m.module === 'OTHER' ? '其他' : m.module }}</text>
                   </view>
-                  <text class="module-name">{{ m.module === 'OTHER' ? '其他' : m.module }}</text>
                 </view>
               </view>
+              <view v-if="!todayModuleBars.length" class="module-empty">
+                <text class="module-empty-text">暂无数据</text>
+              </view>
             </view>
-            <view v-if="!todayModuleBars.length" class="module-empty">
-              <text class="module-empty-text">暂无数据</text>
+
+            <view class="trend">
+              <view class="trend-head">
+                <text class="trend-title">上新趋势</text>
+                <text class="trend-meta">近 30 天</text>
+              </view>
+              <view class="trend-bars">
+                <view v-for="d in trendDays" :key="d.date" class="trend-col">
+                  <view class="trend-bar" :class="{ 'trend-bar--empty': !d.count }">
+                    <view v-if="d.count" class="trend-bar-fill" :style="{ height: d.heightRpx + 'rpx' }" />
+                    <text v-if="d.count" class="trend-bar-count">{{ d.count }}</text>
+                  </view>
+                  <text class="trend-date">{{ d.date.slice(5) }}</text>
+                </view>
+              </view>
+              <view class="trend-foot">
+                <text class="trend-foot-text">{{ trendSummaryText }}</text>
+              </view>
             </view>
           </view>
+        </view>
+      </view> <!-- hero-content end -->
+    </view> <!-- hero end -->
 
-          <view class="trend">
-            <view class="trend-head">
-              <text class="trend-title">上新趋势</text>
-              <text class="trend-meta">近 30 天</text>
-            </view>
-            <view class="trend-bars">
-              <view v-for="d in trendDays" :key="d.date" class="trend-col">
-                <view class="trend-bar" :class="{ 'trend-bar--empty': !d.count }">
-                  <view v-if="d.count" class="trend-bar-fill" :style="{ height: d.heightRpx + 'rpx' }" />
-                  <text v-if="d.count" class="trend-bar-count">{{ d.count }}</text>
-                </view>
-                <text class="trend-date">{{ d.date.slice(5) }}</text>
-              </view>
-            </view>
-            <view class="trend-foot">
-              <text class="trend-foot-text">{{ trendSummaryText }}</text>
-            </view>
+    <view class="panel panel--inline">
+      <view class="panel-title">
+        <uni-icons type="settings" size="18" color="#111827" />
+        <text class="panel-title-text">实用工具</text>
+      </view>
+      <view class="tool" @click="openTimesheet">
+        <view class="tool-left">
+          <uni-icons type="wallet" size="18" color="#D97706" />
+          <view class="tool-text">
+            <text class="tool-name">收入计算 & 工时导出</text>
+            <text class="tool-desc">税前收入估算、自动工作日、Excel 导出</text>
           </view>
+        </view>
+        <uni-icons type="right" size="18" color="#6B7280" />
+      </view>
 
-          <view class="panel panel--inline">
-            <view class="panel-title">
-              <uni-icons type="settings" size="18" color="#111827" />
-              <text class="panel-title-text">实用工具</text>
-            </view>
-
-            <view class="tool" @click="openTimesheet">
-              <view class="tool-left">
-                <uni-icons type="wallet" size="18" color="#D97706" />
-                <view class="tool-text">
-                  <text class="tool-name">收入计算 & 工时导出</text>
-                  <text class="tool-desc">税前收入估算、自动工作日、Excel 导出</text>
-                </view>
-              </view>
-              <uni-icons type="right" size="18" color="#6B7280" />
-            </view>
-
-            <view class="tool tool-muted">
-              <view class="tool-left">
-                <uni-icons type="paperplane" size="18" color="#6B7280" />
-                <view class="tool-text">
-                  <text class="tool-name">更多工具</text>
-                  <text class="tool-desc">后续上线：需求日报、模块画像、薪资基准</text>
-                </view>
-              </view>
-              <text class="tool-badge">规划中</text>
-            </view>
+      <view class="tool tool-muted">
+        <view class="tool-left">
+          <uni-icons type="paperplane" size="18" color="#6B7280" />
+          <view class="tool-text">
+            <text class="tool-name">更多工具</text>
+            <text class="tool-desc">后续上线：需求日报、模块画像、薪资基准</text>
           </view>
+        </view>
+        <text class="tool-badge">规划中</text>
+      </view>
+    </view>
 
-          <view class="lists">
-            <view class="list-card">
-              <view class="list-head">
-                <text class="list-title">今日上新需求</text>
-                <text class="list-meta">{{ todayNewArrivalsText }}</text>
-              </view>
-              <view class="list-body">
-                <view
-                  v-for="item in todayNewList"
-                  :key="item._id || String(item.local_id || '')"
-                  class="list-item"
-                  @click="goToUniqueDemandDetail(item)"
-                  @longpress="copyUniqueDemand(item)"
-                >
-                  <text class="list-item-title">{{ clipText(item.raw_text || '', 48) }}</text>
-                  <text class="list-item-sub">{{ uniqueDemandMetaText(item) }}</text>
-                </view>
-                <view v-if="!todayNewList.length" class="list-empty">
-                  <text class="list-empty-text">暂无数据</text>
-                </view>
-              </view>
-            </view>
+    <view class="lists">
+      <view class="list-card">
+        <view class="list-head">
+          <text class="list-title">今日上新需求</text>
+          <text class="list-meta">{{ todayNewArrivalsText }}</text>
+        </view>
+        <view class="list-body">
+          <view
+            v-for="item in todayNewList"
+            :key="item._id || String(item.local_id || '')"
+            class="list-item"
+            @click="goToUniqueDemandDetail(item)"
+            @longpress="copyUniqueDemand(item)"
+          >
+            <text class="list-item-title">{{ clipText(item.raw_text || '', 48) }}</text>
+            <text class="list-item-sub">{{ uniqueDemandMetaText(item) }}</text>
+          </view>
+          <view v-if="!todayNewList.length" class="list-empty">
+            <text class="list-empty-text">暂无数据</text>
           </view>
         </view>
       </view>
@@ -927,11 +934,52 @@ onShow(() => {
 </script>
 
 <style scoped>
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.header-left, .header-right {
+  width: 120rpx;
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  justify-content: flex-end;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+  flex: 1;
+  text-align: center;
+}
+
 .page {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  padding: 36rpx 28rpx 48rpx;
-  background: #F5F1E8;
-  color: #111827;
+  padding: 0;
+  background: linear-gradient(135deg, #0b1924 0%, #1b2a38 45%, #101820 100%);
   font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
 }
 
@@ -1532,12 +1580,12 @@ onShow(() => {
 }
 
 .footer-link {
-  color: rgba(17, 24, 39, 0.90);
+  color: rgba(245, 241, 232, 0.92);
   font-size: 24rpx;
 }
 
 .footer-dot {
-  color: rgba(17, 24, 39, 0.45);
+  color: rgba(245, 241, 232, 0.55);
   font-size: 24rpx;
 }
 
@@ -1545,6 +1593,6 @@ onShow(() => {
   display: block;
   margin-top: 10rpx;
   font-size: 22rpx;
-  color: rgba(17, 24, 39, 0.55);
+  color: rgba(245, 241, 232, 0.68);
 }
 </style>

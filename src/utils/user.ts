@@ -234,7 +234,7 @@ export async function loginWithPassword(identifier: string, password: string): P
 export async function registerWithPassword(
   identifier: string,
   password: string,
-  profile: { occupation: string; wechat_id?: string; qq_id?: string } | undefined = undefined,
+  profile: { occupation: string; wechat_id?: string; qq_id?: string; can_share_contact?: boolean } | undefined = undefined,
 ): Promise<{ uid: string; token: string }> {
   const resp: any = await requestJson({
     url: `${API_BASE}/auth/register`,
@@ -245,6 +245,7 @@ export async function registerWithPassword(
       occupation: String(profile?.occupation || '').trim(),
       wechat_id: String(profile?.wechat_id || '').trim(),
       qq_id: String(profile?.qq_id || '').trim(),
+      can_share_contact: profile?.can_share_contact === false ? false : true,
     },
     __skipAuthRefresh: true,
   })
@@ -360,7 +361,28 @@ export async function getOrCreateUserProfile(): Promise<UserProfile> {
     header: headers,
   })
 
-  if (resp && resp.ok && resp.profile) return resp.profile as UserProfile
+  if (resp && resp.ok && resp.profile) {
+    const prof = resp.profile as UserProfile
+    const share = (prof as any).can_share_contact
+    if (share === undefined || share === null) {
+      ;(prof as any).can_share_contact = true
+      // 后台静默写回，避免用户未保存资料导致后续仍为缺省
+      try {
+        requestJson({
+          url: `${API_BASE}/update_profile`,
+          method: 'POST',
+          data: {
+            patch: { can_share_contact: true },
+            addPoints: 0,
+          },
+          header: headers,
+        }).catch(() => {})
+      } catch {
+        // ignore
+      }
+    }
+    return prof
+  }
   throw new Error((resp && resp.error) || 'GET_OR_CREATE_PROFILE_FAILED')
 }
 
@@ -399,7 +421,14 @@ export async function getUserProfileOnly(): Promise<UserProfile | null> {
       header: headers,
     })
 
-    if (resp && resp.ok && resp.profile) return resp.profile as UserProfile
+    if (resp && resp.ok && resp.profile) {
+      const prof = resp.profile as UserProfile
+      const share = (prof as any).can_share_contact
+      if (share === undefined || share === null) {
+        ;(prof as any).can_share_contact = true
+      }
+      return prof
+    }
     return null
   } catch {
     return null

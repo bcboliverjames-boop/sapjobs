@@ -1,176 +1,179 @@
 <template>
   <view class="page detail-page">
-    <view class="header">
-      <text class="badge">SAP 需求详情</text>
-      <text class="title">原始需求内容</text>
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBack">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">需求详情</text>
+        <view class="header-right"></view>
+      </view>
     </view>
 
-    <scroll-view class="content" scroll-y="true">
-      <view v-if="loading" class="loading">
-        <text class="loading-text">加载中...</text>
+    <scroll-view class="content-scroll" scroll-y="true">
+      <view v-if="loading" class="loading-state">
+        <text class="loading-text">正在调取原文...</text>
       </view>
 
-      <view v-else-if="!demand" class="empty">
-        <text class="empty-text">未找到对应的需求记录。</text>
+      <view v-else-if="!demand" class="empty-state">
+        <text class="empty-text">未找到对应的需求记录</text>
       </view>
 
-      <view v-else class="card">
-        <view class="section">
-          <view class="raw-header">
-            <text class="section-title">原文</text>
+      <view v-else class="detail-container">
+        <!-- 原文与状态合并卡片 -->
+        <view class="detail-card combined-header-card">
+          <view class="card-header">
+            <view class="header-main-info">
+              <view class="card-dot"></view>
+              <text class="card-title">原始需求原文</text>
+            </view>
             <view
-              class="favorite-btn favorite-btn--compact"
+              class="favorite-action-btn"
               @tap.stop="toggleFavorite"
-              :class="{ 'favorite-btn--active': isFavorited, 'guest-disabled': isGuest }"
+              :class="{ 'favorite-action-btn--active': isFavorited, 'guest-disabled': isGuest }"
             >
-              <text class="favorite-icon">{{ isFavorited ? '❤️' : '🤍' }}</text>
+              <uni-icons :type="isFavorited ? 'heart-filled' : 'heart'" size="20" :color="isFavorited ? '#ef4444' : '#64748b'" />
+              <text class="fav-text">{{ isFavorited ? '已收藏' : '收藏' }}</text>
             </view>
           </view>
-          <text class="raw-text">
-            {{ demand.raw_text }}
-          </text>
-        </view>
-
-        <view class="section">
-          <text class="section-title">结构化信息</text>
-          <view class="tags">
-            <view v-for="m in demand.module_labels" :key="m" class="tag tag--primary">
-              <text>{{ m }}</text>
-            </view>
-            <view v-if="demand.city" class="tag">
-              <text>{{ demand.city }}</text>
-            </view>
-            <view v-if="demand.duration_text" class="tag">
-              <text>{{ demand.duration_text }}</text>
-            </view>
-            <view v-if="demand.years_text" class="tag">
-              <text>{{ demand.years_text }}</text>
-            </view>
-            <view v-if="demand.language" class="tag tag--accent">
-              <text>{{ demand.language }}</text>
-            </view>
-            <view v-if="demand.daily_rate" class="tag tag--rate">
-              <text>💰 {{ formatDailyRate(demand.daily_rate) }}</text>
-            </view>
-            <view v-if="(demand as any).cooperation_mode" class="tag tag--ghost">
-              <text>{{ (demand as any).cooperation_mode }}</text>
-            </view>
-            <view
-              v-for="t in (demand as any).extra_tags"
-              :key="t"
-              class="tag tag--ghost"
-            >
-              <text>{{ t }}</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 状态栏和评价栏 -->
-        <view class="section">
-          <text class="section-title">状态与评价</text>
           
-          <!-- 状态栏 -->
-          <view class="status-bar">
-            <view 
-              v-for="status in statusOptions" 
-              :key="status.value"
-              class="status-item"
-              :class="[
-                `status-item--${status.value}`,
-                { 'status-item--active': userStatuses.includes(status.value) },
-                { 'guest-disabled': isGuest }
-              ]"
-              @tap.stop="handleStatusClick(status)"
-            >
-              <text class="status-icon">{{ status.icon }}</text>
-              <text class="status-label">{{ status.label }}</text>
-              <text class="status-count">({{ statusCounts[status.value] || 0 }})</text>
-              <text 
-                v-if="(status.value === 'onboarded' || status.value === 'closed') && statusNicknames[status.value]"
-                class="status-nickname"
+          <view class="raw-content">
+            <text class="raw-text">{{ demand.raw_text }}</text>
+          </view>
+
+          <!-- 结构化标签 -->
+          <view class="tags-grid detail-tags-margin">
+            <view v-for="m in demand.module_labels" :key="m" class="tag-item tag-module">
+              <text class="tag-text">{{ m }}</text>
+            </view>
+            <view v-if="demand.city" class="tag-item tag-city">
+              <text class="tag-text">📍 {{ demand.city }}</text>
+            </view>
+            <view v-if="demand.duration_text" class="tag-item tag-duration">
+              <text class="tag-text">⏱️ {{ demand.duration_text }}</text>
+            </view>
+            <view v-if="demand.years_text" class="tag-item tag-years">
+              <text class="tag-text">🎓 {{ demand.years_text }}</text>
+            </view>
+            <view v-if="demand.language" class="tag-item tag-lang">
+              <text class="tag-text">🌐 {{ demand.language }}</text>
+            </view>
+            <view v-if="demand.daily_rate" class="tag-item tag-rate">
+              <text class="tag-text">💰 {{ formatDailyRate(demand.daily_rate) }}</text>
+            </view>
+            <view v-if="(demand as any).cooperation_mode" class="tag-item tag-mode">
+              <text class="tag-text">🤝 {{ (demand as any).cooperation_mode }}</text>
+            </view>
+            <view v-for="t in (demand as any).extra_tags" :key="t" class="tag-item tag-extra">
+              <text class="tag-text">{{ t }}</text>
+            </view>
+          </view>
+
+          <view class="card-footer">
+            <text class="time-label">发布时间：{{ demand.createdAt ? formatTime(demand.createdAt) : '未知' }}</text>
+            <text class="richness-label">丰富度：{{ Number((demand as any)?.richness_score || 0) }}</text>
+          </view>
+
+          <!-- 交付状态与靠谱评价 (原第二块，现合并至第一块底部) -->
+          <view class="combined-status-section">
+            <view class="status-divider"></view>
+            <view class="status-header">
+              <view class="card-dot"></view>
+              <text class="status-title">交付状态与靠谱评价</text>
+            </view>
+            
+            <view class="compact-status-row">
+              <view 
+                v-for="status in statusOptions" 
+                :key="status.value"
+                class="compact-status-btn"
+                :class="[
+                  { 'compact-status-btn--active': userStatuses.includes(status.value) }
+                ]"
+                @tap.stop="handleStatusClick(status)"
               >
-                · {{ statusNicknames[status.value] }}
-              </text>
+                <text class="csb-icon">{{ status.icon }}</text>
+                <text class="csb-label">{{ status.label }}</text>
+                <text
+                  class="csb-count"
+                  :class="{ 'csb-count--nonzero': (statusCounts[status.value] || 0) > 0 }"
+                >({{ statusCounts[status.value] || 0 }})</text>
+              </view>
             </view>
-          </view>
-          
-          <!-- 评价栏 -->
-          <view class="reliability-bar">
-            <view 
-              class="reliability-item reliability-item--reliable"
-              :class="{ 'reliability-item--active': userReliability === true, 'guest-disabled': isGuest }"
-              @tap.stop="handleReliabilityClick(true)"
-            >
-              <text class="reliability-icon">👍</text>
-              <text class="reliability-label">靠谱</text>
-              <text class="reliability-count">({{ reliabilityCounts.reliable || 0 }})</text>
-            </view>
-            <view 
-              class="reliability-item reliability-item--unreliable"
-              :class="{ 'reliability-item--active': userReliability === false, 'guest-disabled': isGuest }"
-              @tap.stop="handleReliabilityClick(false)"
-            >
-              <text class="reliability-icon">👎</text>
-              <text class="reliability-label">不靠谱</text>
-              <text class="reliability-count">({{ reliabilityCounts.unreliable || 0 }})</text>
+            
+            <view class="compact-reliability-row compact-status-row">
+              <view 
+                class="compact-status-btn"
+                :class="{ 'compact-status-btn--active': userReliability === true }"
+                @tap.stop="handleReliabilityClick(true)"
+              >
+                <text class="csb-icon">👍</text>
+                <text class="csb-label">靠谱</text>
+                <text
+                  class="csb-count"
+                  :class="{ 'csb-count--nonzero': (reliabilityCounts.reliable || 0) > 0 }"
+                >({{ reliabilityCounts.reliable || 0 }})</text>
+              </view>
+              <view 
+                class="compact-status-btn"
+                :class="{ 'compact-status-btn--active': userReliability === false }"
+                @tap.stop="handleReliabilityClick(false)"
+              >
+                <text class="csb-icon">👎</text>
+                <text class="csb-label">不靠谱</text>
+                <text
+                  class="csb-count"
+                  :class="{ 'csb-count--nonzero': (reliabilityCounts.unreliable || 0) > 0 }"
+                >({{ reliabilityCounts.unreliable || 0 }})</text>
+              </view>
             </view>
           </view>
         </view>
 
-        <!-- 关联需求区域 -->
-        <view v-if="relatedDemands.length > 0" class="section">
-          <view class="section-header">
-            <view class="section-title-row">
-              <text class="section-title">
-                📋 关联需求（{{ relatedDemands.length }} 条）
-              </text>
-              <text v-if="!canViewContact" class="section-subtitle" @tap.stop="showContactAccessInfo">
-                登录并达到 {{ VIEW_CONTACT_THRESHOLD }} 积分后显示联系方式
-              </text>
-            </view>
+        <!-- 关联需求卡片 -->
+        <view v-if="relatedDemands.length > 0" class="detail-card related-card">
+          <view class="card-header card-header--left">
+            <view class="card-dot"></view>
+            <text class="card-title">关联需求（{{ relatedDemands.length }} 条）</text>
           </view>
           
-          <view class="similar-demands-list">
+          <view v-if="!canViewContact" class="contact-lock-hint" @tap.stop="showContactAccessInfo">
+            <uni-icons type="locked" size="14" color="#D97706" />
+            <text class="lock-text">登录并达到 {{ VIEW_CONTACT_THRESHOLD }} 积分后可解锁联系方式</text>
+          </view>
+          
+          <view class="related-list">
             <view 
               v-for="(item, index) in relatedDemands" 
               :key="item.id || index"
-              class="similar-demand-item"
+              class="related-item"
               @tap="goToRelatedDemandDetail(item)"
             >
-              <view class="similar-demand-header">
-                <text class="similar-demand-provider">来自：{{ getRelatedProviderName(item) }}</text>
-                <text v-if="item.isSelf" class="similar-demand-similarity">相似度 100%</text>
-                <text v-else class="similar-demand-similarity">相似度 {{ Math.round(item.similarity * 100) }}%</text>
+              <view class="related-item-head">
+                <text class="related-source">来源：{{ getRelatedProviderName(item) }}</text>
+                <text class="related-sim">{{ item.isSelf ? '100%' : Math.round(item.similarity * 100) + '%' }} 相似</text>
               </view>
-              <text class="similar-demand-text">{{ item.raw_text }}</text>
-              <text v-if="item.createdAt" class="similar-demand-time">{{ formatTime(item.createdAt) }}</text>
-
-              <view v-if="canViewContact || isSelfProvider(item)" class="related-contact" @tap.stop>
-                <view v-if="!getRelatedProviderProfile(item)" class="provider-meta">
-                  发布者未注册或档案未同步，暂无法展示联系方式
-                </view>
+              <text class="related-excerpt">{{ item.raw_text }}</text>
+              
+              <view v-if="canViewContact || isSelfProvider(item)" class="contact-box" @tap.stop>
+                <view v-if="!getRelatedProviderProfile(item)" class="contact-empty">发布者未同步，暂无联系方式</view>
                 <view v-else>
-                  <view v-if="!getRelatedProviderProfile(item)?.can_share_contact" class="provider-meta">
-                    发布者未开放联系方式
-                  </view>
-                  <view v-else-if="!getRelatedProviderProfile(item)?.wechat_id && !getRelatedProviderProfile(item)?.qq_id" class="provider-meta">
-                    发布者暂未提供联系方式
-                  </view>
+                  <view v-if="!isSelfProvider(item) && !canShareProviderContact(getRelatedProviderProfile(item))" class="contact-empty">发布者未开放联系方式</view>
+                  <view v-else-if="!getRelatedProviderProfile(item)?.wechat_id && !getRelatedProviderProfile(item)?.qq_id" class="contact-empty">发布者暂未提供联系方式</view>
                   <view v-else>
-                    <view v-if="!isSelfProvider(item) && !isContactUnlocked(item)" class="unlock-row" @tap.stop>
-                      <button class="unlock-btn" :class="{ 'guest-disabled': isGuest }" @tap.stop="unlockRelatedContact(item)">点击解锁联系方式</button>
-                      <text class="unlock-hint">解锁后可查看联系信息（仅用于项目沟通，请勿骚扰）</text>
+                    <view v-if="!isSelfProvider(item) && !isContactUnlocked(item)" class="unlock-action" @tap.stop="unlockRelatedContact(item)">
+                      <text class="unlock-btn-text">点击消耗积分解锁联系方式</text>
                     </view>
-                    <view v-else class="related-contact-inner">
-                      <view v-if="getRelatedProviderProfile(item)?.wechat_id" class="contact-item" @tap.stop="copyContact('wechat', String(getRelatedProviderProfile(item)?.wechat_id))">
-                        <text class="contact-label">微信：</text>
-                        <text class="contact-value">{{ getRelatedProviderProfile(item)?.wechat_id }}</text>
-                        <text class="contact-copy">点击复制</text>
+                    <view v-else class="contact-details">
+                      <view v-if="getRelatedProviderProfile(item)?.wechat_id" class="contact-line" @tap.stop="copyContact('wechat', String(getRelatedProviderProfile(item)?.wechat_id))">
+                        <text class="c-label">微信：</text>
+                        <text class="c-value">{{ getRelatedProviderProfile(item)?.wechat_id }}</text>
+                        <text class="c-copy">复制</text>
                       </view>
-                      <view v-if="getRelatedProviderProfile(item)?.qq_id" class="contact-item" @tap.stop="copyContact('qq', String(getRelatedProviderProfile(item)?.qq_id))">
-                        <text class="contact-label">QQ：</text>
-                        <text class="contact-value">{{ getRelatedProviderProfile(item)?.qq_id }}</text>
-                        <text class="contact-copy">点击复制</text>
+                      <view v-if="getRelatedProviderProfile(item)?.qq_id" class="contact-line" @tap.stop="copyContact('qq', String(getRelatedProviderProfile(item)?.qq_id))">
+                        <text class="c-label">QQ：</text>
+                        <text class="c-value">{{ getRelatedProviderProfile(item)?.qq_id }}</text>
+                        <text class="c-copy">复制</text>
                       </view>
                     </view>
                   </view>
@@ -180,24 +183,16 @@
           </view>
         </view>
 
-        <view class="section">
-          <text class="section-title">评论</text>
-          <view class="empty">
-            <text class="empty-text">评论功能暂未开放。</text>
+        <!-- 底部说明 -->
+        <view class="legal-info">
+          <view class="info-row" @tap.stop="goToReport">
+            <uni-icons type="info" size="14" color="rgba(11, 25, 36, 0.4)" />
+            <text class="info-text">投诉举报</text>
           </view>
-        </view>
-
-        <view class="legal-footer">
-          <view class="legal-links">
-            <view class="legal-link" @tap.stop="goToReport">
-              <uni-icons type="info" size="14" color="rgba(197, 208, 221, 0.75)" />
-              <text class="legal-link-text">投诉举报</text>
-            </view>
-            <text class="legal-dot">·</text>
-            <view class="legal-link" @tap.stop="goToContact">
-              <uni-icons type="email" size="14" color="rgba(197, 208, 221, 0.75)" />
-              <text class="legal-link-text">联系我们</text>
-            </view>
+          <text class="info-sep">|</text>
+          <view class="info-row" @tap.stop="goToContact">
+            <uni-icons type="email" size="14" color="rgba(11, 25, 36, 0.4)" />
+            <text class="info-text">联系我们</text>
           </view>
         </view>
       </view>
@@ -216,10 +211,10 @@ import {
 import { parseDemandText } from '../../utils/demand-parser'
 import { fetchUniqueDemandById, type SapUniqueDemandDoc } from '../../utils/sap-unique-demands'
 import { ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
-import { getOrCreateUserProfile, getProfilesByIds, getUserProfileOnly, type UserProfile } from '../../utils/user'
-import { getThresholdPoints, getPointsConfig } from '../../utils/points-config'
+import { getOrCreateUserProfile, getProfilesByIds, getUserProfileOnly, updateUserProfile, type UserProfile } from '../../utils/user'
+import { getThresholdPoints, getPointsConfig, getRewardPoints } from '../../utils/points-config'
 import { addFavorite, removeFavorite, isFavorite } from '../../utils/favorites'
-import { navigateTo } from '../../utils'
+import { navigateTo, safeNavigateBack } from '../../utils'
 import { calculateTextSimilarity, checkSimilarDemandsByPolicy } from '../../utils/demand-similarity'
 import { unlockContact } from '../../utils/ugc'
 import { sapModuleCodeToLabel, normalizeSapModuleToken } from '../../utils/sap-modules'
@@ -282,6 +277,81 @@ onShow(async () => {
   await refreshAuthState()
 })
 
+const goBack = () => {
+  let redirectUrl = ''
+  try {
+    const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : []) as any[]
+    if (!pages || pages.length <= 1) {
+      uni.reLaunch({ url: '/pages/demand/demand' })
+      return
+    }
+    const current = pages && pages.length ? pages[pages.length - 1] : null
+    const opts = (current && (current.options || (current.$page && current.$page.options))) || {}
+    if (opts && opts.redirect) redirectUrl = decodeURIComponent(String(opts.redirect))
+  } catch {
+    // ignore
+  }
+
+  if (redirectUrl) {
+    uni.reLaunch({ url: redirectUrl })
+    return
+  }
+
+  safeNavigateBack({ delta: 1 })
+}
+
+const computeLocalRichnessScore = (rawText: string, base: any): number => {
+  try {
+    const raw = String(rawText || '').trim()
+    const parsed = parseDemandText(raw)
+    const moduleCodes = Array.isArray(parsed?.module_codes) ? parsed.module_codes : []
+    const city = String((base && base.city) || parsed?.city || '').trim()
+    const duration = String((base && base.duration_text) || parsed?.duration_text || '').trim()
+    const years = String((base && base.years_text) || parsed?.years_text || '').trim()
+    const lang = String((base && base.language) || parsed?.language || '').trim()
+    const rate = String((base && (base.daily_rate || base.daily_rate_text)) || parsed?.daily_rate || '').trim()
+    const coop = String((base && base.cooperation_mode) || '').trim()
+    const remote = (base && typeof base.is_remote === 'boolean') ? base.is_remote : parsed?.is_remote
+
+    let score = 0
+    if (raw.length >= 30) score += 10
+    if (raw.length >= 60) score += 10
+    if (moduleCodes.length > 0) score += 20
+    if (city) score += 10
+    if (duration) score += 10
+    if (years) score += 10
+    if (lang) score += 10
+    if (rate) score += 10
+    if (coop) score += 5
+    if (remote === true || remote === false) score += 5
+
+    return Math.max(0, Math.min(100, Math.round(score)))
+  } catch {
+    return 0
+  }
+}
+
+const richnessScoreDisplay = computed(() => {
+  const d: any = demand.value as any
+  if (!d) return 0
+  const backend = Number.isFinite(Number(d.richness_score)) ? Number(d.richness_score) : 0
+  if (backend > 0) return backend
+  return computeLocalRichnessScore(String(d.raw_text || ''), d)
+})
+
+// 格式化时间
+const formatTime = (time: Date | string) => {
+  if (!time) return ''
+  const date = time instanceof Date ? time : new Date(time)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 const statusOptions = [
   { value: 'applied', label: '已投递', icon: '📤', confirmMessage: '是否确认已投递？' },
   { value: 'interviewed', label: '已面试', icon: '💼', confirmMessage: '是否确认已面试？' },
@@ -299,6 +369,82 @@ const userStatuses = ref<string[]>([])
 const statusNicknames = ref<Record<string, string>>({})
 const reliabilityCounts = ref({ reliable: 0, unreliable: 0 })
 const userReliability = ref<boolean | null>(null)
+const reliabilityBusy = ref(false)
+
+const RELIABILITY_TOUCHED_STORAGE_KEY = 'sapjobs_reliability_touched_v1'
+const STATUS_TOUCHED_STORAGE_KEY = 'sapjobs_status_touched_v1'
+
+const storageGet = (key: string): any => {
+  try {
+    if (typeof uni !== 'undefined' && (uni as any).getStorageSync) {
+      return (uni as any).getStorageSync(key)
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      const raw = (window as any).localStorage.getItem(key)
+      if (!raw) return undefined
+      return JSON.parse(raw)
+    }
+  } catch {}
+  return undefined
+}
+
+const storageSet = (key: string, value: any) => {
+  try {
+    if (typeof uni !== 'undefined' && (uni as any).setStorageSync) {
+      ;(uni as any).setStorageSync(key, value)
+      return
+    }
+  } catch {}
+  try {
+    if (typeof window !== 'undefined' && (window as any).localStorage) {
+      ;(window as any).localStorage.setItem(key, JSON.stringify(value))
+    }
+  } catch {}
+}
+
+const touchStatusDemandId = (id: string) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  try {
+    const now = Date.now()
+    const raw = storageGet(STATUS_TOUCHED_STORAGE_KEY)
+    const list = Array.isArray(raw?.ids) ? raw.ids : []
+    const next = [key, ...list.filter((x: any) => String(x || '').trim() && String(x || '').trim() !== key)].slice(0, 50)
+    storageSet(STATUS_TOUCHED_STORAGE_KEY, { ts: now, ids: next })
+  } catch {}
+}
+
+const touchStatusDemandIds = (...ids: Array<string | undefined | null>) => {
+  try {
+    ids
+      .map((x) => String(x || '').trim())
+      .filter(Boolean)
+      .forEach((id) => touchStatusDemandId(id))
+  } catch {}
+}
+
+const touchReliabilityDemandId = (id: string) => {
+  const key = String(id || '').trim()
+  if (!key) return
+  try {
+    const now = Date.now()
+    const raw = storageGet(RELIABILITY_TOUCHED_STORAGE_KEY)
+    const list = Array.isArray(raw?.ids) ? raw.ids : []
+    const next = [key, ...list.filter((x: any) => String(x || '').trim() && String(x || '').trim() !== key)].slice(0, 50)
+    storageSet(RELIABILITY_TOUCHED_STORAGE_KEY, { ts: now, ids: next })
+  } catch {}
+}
+
+const touchReliabilityDemandIds = (...ids: Array<string | undefined | null>) => {
+  try {
+    ids
+      .map((x) => String(x || '').trim())
+      .filter(Boolean)
+      .forEach((id) => touchReliabilityDemandId(id))
+  } catch {}
+}
 
 type RelatedDemandItem = {
   id?: string
@@ -464,6 +610,7 @@ const mapUniqueToDemand = (doc: SapUniqueDemandDoc): SapDemandRecord => {
     years_text: yearsText || parsed.years_text || '',
     language: languageTag || parsed.language || '',
     daily_rate: dailyRateText || parsed.daily_rate || '',
+    richness_score: Number.isFinite(Number((doc as any)?.richness_score)) ? Number((doc as any)?.richness_score) : 0,
     cooperation_mode: cooperationModeText,
     provider_name: (doc as any)?.provider_name || (doc as any)?.publisher_name || '未知',
     provider_user_id: (doc as any)?.provider_user_id || (doc as any)?.provider_id || undefined,
@@ -739,6 +886,10 @@ onLoad(async (options) => {
                 years_text: parsed.years_text || '',
                 language: parsed.language || '',
                 daily_rate: parsed.daily_rate || '',
+                richness_score:
+                  (raw as any)?.richness_score !== undefined && (raw as any)?.richness_score !== null
+                    ? Number((raw as any).richness_score)
+                    : Number((mapped as any).richness_score || 0),
                 provider_name: raw.provider_name || mapped.provider_name,
                 provider_user_id: raw.provider_user_id || mapped.provider_user_id,
                 createdAt: raw.createdAt || mapped.createdAt,
@@ -772,7 +923,7 @@ onLoad(async (options) => {
       try {
         fromCloud = await fetchSapDemandById(decodedId)
       } catch (e) {
-        console.error('Failed to load raw demand by id, will fallback via unique mapping:', e)
+        console.error('Failed to load raw demand by id, will fallback via unique table canonical_raw_id mapping:', e)
         fromCloud = null
       }
       if (!fromCloud) {
@@ -872,8 +1023,8 @@ const loadReliabilityData = async () => {
 
     const user = await getOrCreateUserProfile()
     const userRel = await getUserDemandReliability(demandId.value, user.uid)
-    userReliability.value = userRel
-  } catch (e) {
+    userReliability.value = userRel === true ? true : userRel === false ? false : null
+  } catch (e: any) {
     console.error('Failed to load reliability data:', e)
     // 设置默认值
     reliabilityCounts.value = {
@@ -885,9 +1036,22 @@ const loadReliabilityData = async () => {
 
 // 处理状态点击
 const handleStatusClick = async (status: typeof statusOptions[0]) => {
+  if (!demandId.value) return
+  if (isGuest.value) {
+    uni.showToast({ title: '游客模式无法标记状态', icon: 'none' })
+    return
+  }
+
+  // 让广场页 onShow 必定命中并刷新（兼容 canonical/raw/unique 三种 key）
+  touchStatusDemandIds(demandId.value, uniqueDemandId.value, currentRawId.value)
+
   try {
     await requireNonGuest()
     const user = await getOrCreateUserProfile()
+
+    const primaryId = String(demandId.value || '').trim()
+    const secondaryId = String(uniqueDemandId.value || '').trim()
+    const extraIds = secondaryId && secondaryId !== primaryId ? [secondaryId] : []
     
     // 先刷新用户状态列表，确保数据是最新的
     await loadStatusData()
@@ -908,7 +1072,13 @@ const handleStatusClick = async (status: typeof statusOptions[0]) => {
         if (!confirmCancel) return
       }
       
-      await unmarkDemandStatus(demandId.value!, status.value as any, user.uid)
+      await unmarkDemandStatus(primaryId, status.value as any, user.uid)
+      for (const id of extraIds) {
+        try {
+          await unmarkDemandStatus(id, status.value as any, user.uid)
+        } catch {}
+      }
+      touchStatusDemandIds(demandId.value, uniqueDemandId.value, currentRawId.value)
       await new Promise(resolve => setTimeout(resolve, 500))
       await loadStatusData()
       uni.showToast({ title: '状态已取消', icon: 'none' })
@@ -932,8 +1102,15 @@ const handleStatusClick = async (status: typeof statusOptions[0]) => {
     }
     
     console.log('开始标记状态:', status.value)
-    await markDemandStatus(demandId.value!, status.value as any, user.nickname || '匿名用户')
+    await markDemandStatus(primaryId, status.value as any, user.nickname || '匿名用户')
+    for (const id of extraIds) {
+      try {
+        await markDemandStatus(id, status.value as any, user.nickname || '匿名用户')
+      } catch {}
+    }
     console.log('状态标记完成')
+
+    touchStatusDemandIds(demandId.value, uniqueDemandId.value, currentRawId.value)
     
     // 等待一小段时间，确保数据库已更新
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -956,42 +1133,96 @@ const handleStatusClick = async (status: typeof statusOptions[0]) => {
 
 // 处理评价点击
 const handleReliabilityClick = async (reliable: boolean) => {
+  if (!demandId.value) return
+  if (reliabilityBusy.value) return
+
+  const prevUserReliability = userReliability.value
+  const prevCounts = { ...(reliabilityCounts.value || { reliable: 0, unreliable: 0 }) }
+
+  // 点击即反馈：先做乐观高亮/取消高亮（鉴权/接口失败再回滚）
+  const nextUserReliability = userReliability.value === reliable ? null : reliable
+  userReliability.value = nextUserReliability
+
   try {
+    reliabilityBusy.value = true
     await requireNonGuest()
     const user = await getOrCreateUserProfile()
-    
-    // 先刷新用户评价，确保数据是最新的
-    await loadReliabilityData()
-    
-    // 如果已评价且相同，则取消
-    if (userReliability.value === reliable) {
-      await unmarkDemandReliability(demandId.value!, user.uid)
-      await new Promise(resolve => setTimeout(resolve, 300))
-      await loadReliabilityData()
-      uni.showToast({ title: '评价已取消', icon: 'none' })
-      return
+
+    const primaryId = String(demandId.value || '').trim()
+    const secondaryId = String(uniqueDemandId.value || '').trim()
+    const extraIds = secondaryId && secondaryId !== primaryId ? [secondaryId] : []
+
+    if (nextUserReliability === null) {
+      await unmarkDemandReliability(primaryId, user.uid)
+      for (const id of extraIds) {
+        try {
+          await unmarkDemandReliability(id, user.uid)
+        } catch {}
+      }
+
+      touchReliabilityDemandIds(demandId.value, uniqueDemandId.value, currentRawId.value)
+
+      // 取消评价：扣回积分
+      const points = getRewardPoints('markDemandReliability')
+      if (points > 0) {
+        updateUserProfile({}, { addPoints: -points }).catch(() => {})
+      }
+
+      // 取消后以服务端为准刷新 counts
+      loadReliabilityData().catch(() => {})
+
+      if (points > 0) {
+        uni.showToast({ title: `评价已取消，积分 -${points}`, icon: 'none' })
+      } else {
+        uni.showToast({ title: '评价已取消', icon: 'none' })
+      }
+    } else {
+      await markDemandReliability(primaryId, reliable, user.nickname || '匿名用户')
+      for (const id of extraIds) {
+        try {
+          await markDemandReliability(id, reliable, user.nickname || '匿名用户')
+        } catch {}
+      }
+
+      touchReliabilityDemandIds(demandId.value, uniqueDemandId.value, currentRawId.value)
+
+      // 只有“首次评价（从 null -> true/false）”才加积分；从 true<->false 视为修改，不重复加分
+      const points = prevUserReliability === null ? getRewardPoints('markDemandReliability') : 0
+      if (points > 0) {
+        updateUserProfile({}, { addPoints: points }).catch(() => {})
+        uni.showToast({ title: `评价成功，积分 +${points}`, icon: 'success' })
+      } else {
+        uni.showToast({ title: reliable ? '已标记为靠谱' : '已标记为不靠谱', icon: 'none' })
+      }
+
+      // 标记/修改后以服务端为准刷新 counts
+      loadReliabilityData().catch(() => {})
     }
-    
-    console.log('开始标记评价:', reliable)
-    await markDemandReliability(demandId.value!, reliable, user.nickname || '匿名用户')
-    console.log('评价标记完成')
-    
-    // 等待一小段时间，确保数据库已更新
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    // 刷新评价数据（包括数量和用户评价）
-    console.log('开始刷新评价数据')
-    await loadReliabilityData()
-    console.log('评价数据刷新完成，当前数量:', reliabilityCounts.value)
-    
-    uni.showToast({ title: reliable ? '已标记为靠谱' : '已标记为不靠谱', icon: 'success' })
+
+    // 异步校准：做重试刷新，确保最终与服务端一致
+    const refreshRelWithRetry = async () => {
+      const tries = [200, 400, 800, 1200]
+      for (let i = 0; i < tries.length; i++) {
+        await new Promise((r) => setTimeout(r, tries[i]))
+        await loadReliabilityData()
+        if (userReliability.value === true || userReliability.value === false || userReliability.value === null) return
+      }
+    }
+    refreshRelWithRetry().catch(() => {})
   } catch (e: any) {
     console.error('Failed to mark reliability:', e)
+    // 失败回滚
+    try {
+      userReliability.value = prevUserReliability
+      reliabilityCounts.value = prevCounts as any
+    } catch {}
     const msg = String(e?.message || '')
     if (msg.includes('GUEST_READONLY')) {
       return
     }
     uni.showToast({ title: msg || '评价失败', icon: 'none' })
+  } finally {
+    reliabilityBusy.value = false
   }
 }
 
@@ -1091,7 +1322,7 @@ const showContactAccessInfo = () => {
   
   // 从配置读取积分规则
   const config = getPointsConfig()
-  const rulesText = `积分规则：\n• 注册成功：+${config.rewards.register} 分\n• 完善个人资料：+${config.rewards.completeProfile} 分\n• 发布需求：+${config.rewards.publishDemand} 分\n\n查看联系方式需要 ${VIEW_CONTACT_THRESHOLD} 积分`
+  const rulesText = `积分规则：\n• 注册成功：+${config.rewards.register} 分\n• 完善个人资料：+${config.rewards.completeProfile} 分\n• 发布需求：+${config.rewards.publishDemand} 分\n• 评价/标记需求：+${config.rewards.markDemandStatus} 分\n\n查看联系方式需要 ${VIEW_CONTACT_THRESHOLD} 积分`
   
   let message = ''
   if (!viewerProfile.value) {
@@ -1182,19 +1413,7 @@ const loadSimilarDemands = async (rawText: string, currentId?: string, currentUs
   }
 }
 
-// 格式化时间
-const formatTime = (time: Date | string) => {
-  if (!time) return ''
-  const date = time instanceof Date ? time : new Date(time)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
+// 格式化时间已在上方定义
 // 跳转到需求详情
 const goToDemandDetail = (id?: string) => {
   if (!id) return
@@ -1249,6 +1468,22 @@ const getRelatedProviderProfile = (item: RelatedDemandItem): UserProfile | null 
   return relatedProfilesById.value[pid] || null
 }
 
+const canShareProviderContact = (p: UserProfile | null): boolean => {
+  if (!p) return false
+  const raw = (p as any).can_share_contact
+  const alt = (p as any).allow_show_contact ?? (p as any).allowShowContact
+  const val = raw !== undefined && raw !== null ? raw : alt
+
+  // 保持与 getOrCreateUserProfile / getUserProfileOnly 的缺省策略一致：
+  // 若字段缺失，视为允许展示，避免前后端字段差异导致误判“未开放”。
+  if (val === undefined || val === null) return true
+  if (val === true) return true
+  if (val === false) return false
+  if (val === 1 || val === '1') return true
+  if (val === 0 || val === '0') return false
+  return Boolean(val)
+}
+
 const isSelfProvider = (item: RelatedDemandItem): boolean => {
   const pid = String(item.provider_user_id || '').trim()
   if (!pid) return false
@@ -1280,741 +1515,491 @@ const formatDailyRate = (rate: string | undefined): string => {
 }
 </script>
 
-<style scoped lang="scss">
+<style lang="scss" scoped>
 .page {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 16rpx 24rpx 24rpx;
-  background: linear-gradient(135deg, #0b1924 0%, #1b2a38 45%, #101820 100%);
+  background: #F5F1E8;
 }
 
-.header {
-  padding: 24rpx 8rpx 12rpx;
-  color: #f5f5f5;
-  position: relative;
-}
-
-.header-favorite {
-  position: absolute;
-  top: 24rpx;
-  right: 12rpx;
-  z-index: 2;
-}
-
-.badge {
-  font-size: 20rpx;
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  border-width: 2rpx;
-  border-style: solid;
-  border-color: rgba(255, 255, 255, 0.18);
-  color: #f8f3e6;
-}
-
-.title {
-  margin-top: 8rpx;
-  font-size: 34rpx;
-  font-weight: 700;
-  color: #fdf9f0;
-}
-
-.subtitle {
-  margin-top: 4rpx;
-  font-size: 24rpx;
-  color: #c5d0dd;
-}
-
-.content {
-  flex: 1;
-  margin-top: 8rpx;
-}
-
-.loading,
-.empty {
-  padding: 40rpx 20rpx;
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
   align-items: center;
   justify-content: center;
-  display: flex;
-}
-
-.loading-text,
-.empty-text {
-  font-size: 26rpx;
-  color: #c5d0dd;
-}
-
-.card {
-  margin-top: 8rpx;
-  border-radius: 24rpx;
-  padding: 24rpx 22rpx 18rpx;
-  background: linear-gradient(145deg, #111c28 0%, #141f2c 50%, #0b151f 100%);
-  box-shadow:
-    0 22rpx 55rpx rgba(0, 0, 0, 0.65),
-    0 0 0 1rpx rgba(255, 255, 255, 0.02);
-}
-
-.section {
-  margin-bottom: 20rpx;
-}
-
-.section-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10rpx;
-}
-
-.section-title {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #e4edf7;
-  display: block;
-}
-
-.section-title-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-
-.section-subtitle {
-  font-size: 22rpx;
-  padding: 6rpx 14rpx;
-  font-weight: 600;
-  border-radius: 999rpx;
-  border: 1rpx solid rgba(244, 162, 89, 0.55);
-  background: rgba(244, 162, 89, 0.16);
-  color: #f4a259;
-  box-shadow: 0 8rpx 20rpx rgba(0, 0, 0, 0.25);
-}
-
-.raw-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 12rpx;
-  margin-bottom: 10rpx;
-}
-
-.raw-header .section-title {
-  display: inline-block;
-}
-
-.favorite-btn {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 20rpx;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1rpx solid rgba(255, 255, 255, 0.2);
-  transition: all 0.2s;
-}
-
-.favorite-btn--compact {
-  padding: 2rpx 8rpx;
-  border-radius: 999rpx;
-  gap: 0;
-}
-
-.favorite-btn--active {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-}
-
-.favorite-icon {
-  font-size: 24rpx;
-}
-
-.favorite-text {
-  font-size: 22rpx;
-  color: #e4edf7;
-}
-
-.favorite-btn--active .favorite-text {
-  color: #ef4444;
-}
-
-.raw-text {
-  font-size: 24rpx;
-  line-height: 1.7;
-  color: #e4edf7;
-}
-
-.tags {
-  flex-direction: row;
-  flex-wrap: wrap;
-  display: flex;
-}
-
-.tag {
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  margin-right: 10rpx;
-  margin-bottom: 8rpx;
-  background-color: rgba(35, 57, 80, 0.9);
-}
-
-.tag--primary {
-  background-color: rgba(244, 162, 89, 0.22);
-}
-
-.tag--accent {
-   background-color: rgba(51, 130, 119, 0.32);
- }
-
- .tag--rate {
-   background-color: rgba(255, 193, 7, 0.25);
-   border: 1rpx solid rgba(255, 193, 7, 0.4);
- }
-
- .tag text {
-   font-size: 20rpx;
-   color: #dfe7f1;
- }
-
- .tag--rate text {
-   color: #ffc107;
-   font-weight: 600;
- }
-
-.status-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 16rpx;
-}
-
-.status-item {
-  display: flex;
-  align-items: center;
-  padding: 12rpx 20rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.1);
-  border-radius: 16rpx;
-  font-size: 24rpx;
-  color: #c5d0dd;
-  transition: all 0.3s;
-}
-
-.status-item--active {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #3b82f6;
-  color: #60a5fa;
-}
-
-.status-item--onboarded.status-item--active {
-  background: rgba(34, 197, 94, 0.22);
-  border-color: #22c55e;
-  color: #86efac;
-}
-
-.status-item--closed.status-item--active {
-  background: rgba(239, 68, 68, 0.22);
-  border-color: #ef4444;
-  color: #fecdd3;
-}
-
-.status-icon {
-  margin-right: 8rpx;
-  font-size: 28rpx;
-}
-
-.legal-footer {
-  margin-top: 8rpx;
-  padding-top: 14rpx;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.06);
-}
-
-.legal-links {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-}
-
-.legal-link {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8rpx;
-  padding: 6rpx 8rpx;
-  border-radius: 12rpx;
-  background: transparent;
-}
-
-.legal-link-text {
-  font-size: 22rpx;
-  color: rgba(197, 208, 221, 0.78);
-}
-
-.legal-dot {
-  margin: 0 10rpx;
-  font-size: 20rpx;
-  color: rgba(197, 208, 221, 0.5);
-}
-
-.compliance-actions {
-  display: flex;
-  flex-direction: row;
-  gap: 12rpx;
-  margin-top: 12rpx;
-}
-
-.compliance-btn {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  padding: 14rpx 16rpx;
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1rpx solid rgba(255, 255, 255, 0.12);
-}
-
-.compliance-btn--danger {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.35);
-}
-
-.compliance-btn-text {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #e4edf7;
-}
-
-.status-label {
-  margin-right: 4rpx;
-}
-
-.status-count {
-  font-size: 22rpx;
-  color: #94a3b8;
-}
-
-.status-nickname {
-  margin-left: 6rpx;
-  font-size: 20rpx;
-  color: #e5e7eb;
-}
-
-.reliability-bar {
-  display: flex;
-  gap: 12rpx;
-  margin-top: 16rpx;
-}
-
-.reliability-item {
-  display: flex;
-  align-items: center;
-  padding: 12rpx 20rpx;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1rpx solid rgba(255, 255, 255, 0.1);
-  border-radius: 16rpx;
-  font-size: 24rpx;
-  color: #c5d0dd;
-}
-
-.reliability-item--active.reliability-item--reliable {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: #22c55e;
-  color: #4ade80;
-}
-
-.reliability-item--active.reliability-item--unreliable {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #f87171;
-}
-
-.guest-disabled {
-  opacity: 0.45;
-  filter: grayscale(1);
-}
-
-.reliability-icon {
-  margin-right: 8rpx;
-  font-size: 28rpx;
-}
-
-.reliability-label {
-  margin-right: 4rpx;
-}
-
-.reliability-count {
-  font-size: 22rpx;
-  color: #94a3b8;
-}
-
-.provider {
-  flex-direction: row;
-  align-items: flex-start;
-  display: flex;
-  padding: 16rpx;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12rpx;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.provider:active {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.avatar {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 999rpx;
-  margin-right: 14rpx;
-  overflow: hidden;
-  background: radial-gradient(circle at 30% 20%, #f4a259 0%, #ff6b35 35%, #1b2a38 85%);
-  position: relative;
-  flex-shrink: 0;
-}
-
-.avatar--unlocked {
-  background: rgba(76, 175, 80, 0.2);
-  border: 2rpx solid rgba(76, 175, 80, 0.4);
-}
-
-.avatar-image {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-}
-
-.avatar-mask {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
+  z-index: 1010;
   width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4rpx);
+}
+
+.page-header-content {
   display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.avatar-lock-icon {
-  font-size: 32rpx;
-  opacity: 0.8;
-}
-
-.provider-text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.provider-name {
-  font-size: 22rpx;
-  color: #f1f5f9;
-  font-weight: 500;
-}
-
-.provider-meta {
-  font-size: 20rpx;
-  color: #97a6ba;
-  line-height: 1.5;
-}
-
-.provider-contact {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  margin-top: 4rpx;
-}
-
-.contact-item {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 8rpx 12rpx;
-  background: rgba(76, 175, 80, 0.1);
-  border-radius: 8rpx;
-  border: 1rpx solid rgba(76, 175, 80, 0.2);
-}
-
-.contact-label {
-  font-size: 20rpx;
-  color: #97a6ba;
-  font-weight: 500;
-}
-
-.contact-value {
-  font-size: 20rpx;
-  color: #4caf50;
-  font-weight: 600;
-  flex: 1;
-}
-
-.contact-copy {
-  font-size: 18rpx;
-  color: #4caf50;
-  opacity: 0.8;
-}
-
-.contact-warning {
-  font-size: 18rpx;
-  color: #ff9800;
-  margin-top: 4rpx;
-  opacity: 0.9;
-}
-
-.provider-locked {
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-}
-
-.unlock-hint {
-  font-size: 18rpx;
-  color: #4caf50;
-  margin-top: 4rpx;
-  text-decoration: underline;
-}
-
-.message-btn {
-  margin-top: 16rpx;
-  padding: 12rpx 24rpx;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 20rpx;
-  display: inline-block;
-}
-
-.message-btn-text {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #fff;
-}
-
-.comment-list {
-  margin-top: 10rpx;
-}
-
-.comment-item {
-  padding: 14rpx 0;
-  border-bottom: 1rpx solid rgba(148, 163, 184, 0.35);
-}
-
-.comment-item:last-of-type {
-  border-bottom-width: 0;
-}
-
-.comment-author {
-  font-size: 22rpx;
-  color: #e5e7eb;
-}
-
-.comment-content {
-  margin-top: 4rpx;
-  font-size: 24rpx;
-  color: #e5e7eb;
-}
-
-.comment-time {
-  margin-top: 2rpx;
-  font-size: 20rpx;
-  color: #94a3b8;
-}
-
-.comment-actions {
-  margin-top: 6rpx;
   flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.header-left, .header-right {
+  width: 120rpx;
   display: flex;
+  align-items: center;
+}
+
+.header-right {
+  justify-content: flex-end;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+  flex: 1;
+  text-align: center;
+}
+
+.header-right {
+  justify-content: flex-end;
+}
+
+.content-scroll {
+  flex: 1;
+  height: 0;
+}
+
+.detail-container {
+  padding: 24rpx;
+  display: flex;
+  flex-direction: column;
   gap: 24rpx;
 }
 
-.action-btn {
+.detail-card {
+  background: #FFFFFF;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  border: 2rpx solid rgba(11, 25, 36, 0.05);
+  box-shadow: 0 4rpx 16rpx rgba(11, 25, 36, 0.03);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.header-main-info {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.favorite-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  background: #f8fafc;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 99rpx;
+  transition: all 0.2s;
+}
+
+.favorite-action-btn--active {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.fav-text {
   font-size: 22rpx;
-  color: #cbd5f5;
+  color: #64748b;
+  font-weight: 700;
 }
 
-.action-btn--reply {
-  color: #1e40af;
-  font-weight: 500;
+.favorite-action-btn--active .fav-text {
+  color: #ef4444;
 }
 
-.reply-list {
-  margin-top: 12rpx;
-  margin-bottom: 8rpx;
-  padding: 12rpx 0 12rpx 24rpx;
-  border-left: 3rpx solid rgba(148, 163, 184, 0.5);
-  background-color: rgba(15, 23, 42, 0.3);
+.detail-tags-margin {
+  margin-top: 20rpx;
+}
+
+/* 紧凑状态按钮 */
+.compact-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.compact-status-btn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 10rpx 16rpx;
+  background: #f8fafc;
+  border: 1rpx solid #f1f5f9;
+  border-radius: 8rpx;
+  transition: all 0.2s;
+}
+
+.card-header--left {
+  justify-content: flex-start !important;
+  gap: 12rpx;
+}
+
+.compact-status-btn--active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+/* 兼容靠谱按钮的高亮颜色 */
+.compact-reliability-row .compact-status-btn--active:first-child {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+.compact-reliability-row .compact-status-btn--active:first-child .csb-label { color: #059669; }
+
+.compact-reliability-row .compact-status-btn--active:last-child {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.compact-reliability-row .compact-status-btn--active:last-child .csb-label { color: #dc2626; }
+
+.csb-icon { font-size: 24rpx; }
+.csb-label { font-size: 22rpx; color: #475569; font-weight: 600; }
+.csb-count { font-size: 20rpx; color: #94a3b8; }
+
+.csb-count--nonzero { color: #64748b; font-weight: 700; }
+
+.compact-status-btn--active .csb-label { color: #2563eb; }
+
+.compact-status-btn--active .csb-count--nonzero { color: #2563eb; font-weight: 800; }
+
+/* 详情页：靠谱/不靠谱时让非 0 数字随按钮高亮颜色 */
+.compact-reliability-row .compact-status-btn--active:first-child .csb-count--nonzero { color: #059669; font-weight: 800; }
+.compact-reliability-row .compact-status-btn--active:last-child .csb-count--nonzero { color: #dc2626; font-weight: 800; }
+
+/* 紧凑评价按钮 */
+.compact-reliability-row {
+  display: flex;
+  gap: 12rpx;
+}
+
+.compact-rel-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  height: 64rpx;
+  background: #f8fafc;
+  border: 1rpx solid #f1f5f9;
   border-radius: 8rpx;
 }
 
-.reply-item {
-  margin-bottom: 10rpx;
-  padding: 6rpx 0;
+.compact-rel-btn--active {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.crb-label {
+  font-size: 24rpx;
+  color: #475569;
+  font-weight: 700;
+}
+
+.compact-rel-btn--active .crb-label { color: #0369a1; }
+
+.card-dot {
+  width: 8rpx;
+  height: 24rpx;
+  background: #D97706;
+  border-radius: 4rpx;
+}
+
+.card-title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #0B1924;
+}
+
+.raw-content {
+  background: #F9FAFB;
+  padding: 24rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid #F3F4F6;
+}
+
+.raw-text {
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: #374151;
+  word-break: break-all;
+}
+
+.card-footer {
+  margin-top: 20rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.time-label {
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
+
+.richness-label {
+  font-size: 22rpx;
+  color: #9CA3AF;
+  text-align: right;
+}
+
+/* 标签网格 */
+.tags-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.tag-item {
+  padding: 10rpx 20rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.tag-module { background: #E0F2FE; color: #0369A1; }
+.tag-city { background: #F0FDF4; color: #15803D; }
+.tag-duration { background: #FEF3C7; color: #B45309; }
+.tag-years { background: #F5F3FF; color: #6D28D9; }
+.tag-lang { background: #ECFDF5; color: #047857; }
+.tag-rate { background: #FFF1F2; color: #BE123C; }
+.tag-mode { background: #F3F4F6; color: #4B5563; }
+.tag-extra { background: #F9FAFB; color: #6B7280; border: 1rpx solid #E5E7EB; }
+
+/* 状态 Pill */
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx;
+  margin-bottom: 30rpx;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+  background: #F9FAFB;
+  border: 2rpx solid #F3F4F6;
+  border-radius: 16rpx;
+  transition: all 0.2s;
+}
+
+.status-pill--active {
+  background: #FEF3C7;
+  border-color: #FCD34D;
+}
+
+.status-icon {
+  font-size: 32rpx;
+  margin-right: 16rpx;
+}
+
+.status-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.status-name {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #4B5563;
+}
+
+.status-num {
+  font-size: 20rpx;
+  color: #9CA3AF;
+}
+
+.status-user {
+  font-size: 20rpx;
+  color: #D97706;
+  font-weight: 600;
+}
+
+/* 靠谱按钮 */
+.reliability-row {
+  display: flex;
+  gap: 20rpx;
+}
+
+.rel-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  height: 80rpx;
+  border-radius: 12rpx;
+  background: #F9FAFB;
+  border: 2rpx solid #F3F4F6;
+}
+
+.rel-btn--up.rel-btn--active { background: #DCFCE7; border-color: #86EFAC; color: #166534; }
+.rel-btn--down.rel-btn--active { background: #FEE2E2; border-color: #FCA5A5; color: #991B1B; }
+
+.rel-text {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+/* 关联列表 */
+.contact-lock-hint {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 16rpx;
+  background: #FFFBEB;
+  border: 1rpx solid #FEF3C7;
+  border-radius: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.lock-text {
+  font-size: 22rpx;
+  color: #D97706;
+  font-weight: 600;
+}
+
+.related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.related-item {
+  padding: 20rpx;
+  background: #F9FAFB;
+  border-radius: 12rpx;
+  border: 1rpx solid #F3F4F6;
+}
+
+.related-item-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.related-source { font-size: 22rpx; color: #9CA3AF; }
+.related-sim { font-size: 22rpx; font-weight: 800; color: #D97706; }
+
+.related-excerpt {
+  font-size: 26rpx;
+  color: #4B5563;
+  line-height: 1.5;
+  margin-bottom: 20rpx;
+}
+
+.contact-box {
+  border-top: 1rpx dashed #E5E7EB;
+  padding-top: 20rpx;
+}
+
+.contact-empty {
+  font-size: 22rpx;
+  color: #9CA3AF;
+  text-align: center;
+}
+
+.unlock-action {
+  background: #0B1924;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8rpx;
+}
+
+.unlock-btn-text {
+  color: #F5F1E8;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.contact-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.contact-line {
+  display: flex;
+  align-items: center;
+  background: #FFFFFF;
+  padding: 12rpx 20rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #E5E7EB;
+}
+
+.c-label { font-size: 24rpx; color: #6B7280; }
+.c-value { font-size: 24rpx; font-weight: 700; color: #0B1924; flex: 1; }
+.c-copy { font-size: 20rpx; color: #3B82F6; font-weight: 600; }
+
+.status-divider {
+  height: 2rpx;
+  background: rgba(11, 25, 36, 0.06);
+  margin: 24rpx 0;
+}
+
+.status-header {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
 }
 
-.reply-item:last-child {
-  margin-bottom: 0;
-}
-
-.reply-author {
-  font-size: 20rpx;
-  color: #cbd5f5;
-  font-weight: 500;
-}
-
-.reply-content {
-  font-size: 20rpx;
-  color: #e5e7eb;
-  margin-left: 8rpx;
-  flex: 1;
-  word-break: break-word;
-}
-
-.reply-time {
-  font-size: 18rpx;
-  color: #94a3b8;
-  margin-left: 12rpx;
-  width: 100%;
-  margin-top: 4rpx;
-}
-
-.reply-editor {
-  margin-top: 10rpx;
-}
-
-.reply-input {
-  min-height: 60rpx;
-  padding: 10rpx 14rpx;
-  border-radius: 12rpx;
-  border: 2rpx solid rgba(148, 163, 184, 0.7);
-  color: #e5e7eb;
-  font-size: 22rpx;
-}
-
-.reply-btn {
-  margin-top: 6rpx;
-  width: 180rpx;
-  height: 60rpx;
-  border-radius: 999rpx;
-  border: none;
-  background: rgba(59, 130, 246, 0.9);
-  color: #f9fafb;
-  font-size: 22rpx;
-}
-
-.reply-btn:active {
-  background: rgba(37, 99, 235, 0.9);
-}
-
-.comment-editor {
-  margin-top: 16rpx;
-}
-
-.comment-editor--top {
-  margin-top: 0;
-  margin-bottom: 20rpx;
-  padding-bottom: 20rpx;
-  border-bottom: 1rpx solid rgba(148, 163, 184, 0.2);
-}
-
-.comment-input {
-  min-height: 80rpx;
-  padding: 14rpx 18rpx;
-  border-radius: 14rpx;
-  border: 2rpx solid rgba(148, 163, 184, 0.7);
-  color: #e5e7eb;
-  font-size: 24rpx;
-  background-color: rgba(15, 23, 42, 0.6);
-}
-
-.comment-btn {
-  margin-top: 10rpx;
-  width: 100%;
-  height: 76rpx;
-  border-radius: 12rpx;
-  border: none;
-  background: #1d4ed8;
-  color: #f9fafb;
+.status-title {
   font-size: 28rpx;
+  font-weight: 800;
+  color: #111827;
 }
 
-.comment-btn:active {
-  background: #1e40af;
+.combined-status-section {
+  margin-top: 12rpx;
 }
 
-.comment-btn:disabled {
-   background: #64748b;
-   opacity: 0.6;
- }
+.legal-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  margin: 40rpx 0 60rpx;
+}
 
- .toggle-icon {
-   font-size: 24rpx;
-   color: #94a3b8;
-   margin-left: 12rpx;
- }
+.info-row { display: flex; align-items: center; gap: 8rpx; }
+.info-text { font-size: 22rpx; color: #9CA3AF; }
+.info-sep { color: #E5E7EB; font-size: 20rpx; }
 
- .similar-demands-list {
-   margin-top: 16rpx;
-   display: flex;
-   flex-direction: column;
-   gap: 16rpx;
- }
+.loading-state, .empty-state {
+  padding: 100rpx 0;
+  text-align: center;
+}
 
- .similar-demand-item {
-   padding: 16rpx;
-   background: rgba(59, 130, 246, 0.1);
-   border-radius: 12rpx;
-   border: 1rpx solid rgba(59, 130, 246, 0.2);
-   transition: all 0.2s;
- }
-
- .similar-demand-item:active {
-   background: rgba(59, 130, 246, 0.15);
- }
-
- .similar-demand-header {
-   display: flex;
-   flex-direction: row;
-   align-items: center;
-   justify-content: space-between;
-   margin-bottom: 8rpx;
- }
-
- .similar-demand-provider {
-   font-size: 22rpx;
-   color: #3b82f6;
-   font-weight: 500;
- }
-
- .similar-demand-similarity {
-   font-size: 20rpx;
-   color: #94a3b8;
- }
-
- .similar-demand-text {
-   font-size: 24rpx;
-   color: #e4edf7;
-   line-height: 1.6;
-   margin-bottom: 8rpx;
-   display: block;
- }
-
- .similar-demand-time {
-   font-size: 20rpx;
-   color: #94a3b8;
- }
- </style>
+.loading-text, .empty-text {
+  font-size: 26rpx;
+  color: #9CA3AF;
+}
+</style>
 
 

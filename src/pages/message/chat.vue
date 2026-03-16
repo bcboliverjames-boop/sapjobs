@@ -45,6 +45,7 @@ import { ref, onMounted, nextTick } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { requireNonGuest } from '../../utils/cloudbase'
 import { sendMessage as sendMessageApi, getMessagesWithUser } from '../../utils/messages'
+import { safeNavigateBack } from '../../utils'
 
 const otherUserId = ref('')
 const otherNickname = ref('')
@@ -62,7 +63,7 @@ onLoad(async (options) => {
   if (!userId) {
     uni.showToast({ title: '参数错误', icon: 'none' })
     setTimeout(() => {
-      uni.navigateBack()
+      safeNavigateBack({ delta: 1 })
     }, 1500)
     return
   }

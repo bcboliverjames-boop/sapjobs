@@ -1,20 +1,24 @@
 import { getOrCreateUserProfile } from './user'
 
 function getApiBase(): string {
-  const fromEnv =
-    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
-  if (fromEnv) return String(fromEnv)
-
   try {
     if (typeof window !== 'undefined') {
       const host = String(window.location && window.location.hostname)
       if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-        return 'https://api.sapboss.com'
+        const forced =
+          (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+        const forcedTrim = String(forced || '').trim()
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\b/i.test(forcedTrim)) return forcedTrim
+        return 'http://127.0.0.1:3001'
       }
     }
   } catch {
     // ignore
   }
+
+  const fromEnv =
+    (import.meta as any)?.env?.VITE_SAPBOSS_API_BASE_URL || (import.meta as any)?.env?.VITE_API_BASE_URL || ''
+  if (fromEnv) return String(fromEnv)
 
   return 'https://api.sapboss.com'
 }
@@ -22,7 +26,28 @@ function getApiBase(): string {
 const API_BASE = getApiBase()
 const API_TOKEN_KEY = 'sapboss_api_token'
 
+function isLocalhostRuntime(): boolean {
+  try {
+    if (typeof window === 'undefined') return false
+    const hostname = String(window.location && (window.location as any).hostname || '')
+    const host = String(window.location && (window.location as any).host || '')
+    const href = String(window.location && (window.location as any).href || '')
+    if (/^(localhost|127\.0\.0\.1)$/i.test(hostname)) return true
+    if (/^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)) return true
+    if (/\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(href)) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
 function getStoredToken(): string {
+  try {
+    const base = String(API_BASE || '')
+    if (/\b(localhost|127\.0\.0\.1)\b/i.test(base)) return ''
+  } catch {}
+
+  if (isLocalhostRuntime()) return ''
   try {
     const u: any = typeof uni !== 'undefined' ? (uni as any) : null
     if (u && typeof u.getStorageSync === 'function') {
@@ -61,6 +86,13 @@ function requestJson<T = any>(opts: {
     })
   })
 }
+
+export const statusOptions = [
+  { value: 'applied', label: '已投递', icon: '📤', confirmMessage: '确认已投递该需求？' },
+  { value: 'interviewed', label: '已面试', icon: '💼', confirmMessage: '确认已参加该需求面试？' },
+  { value: 'onboarded', label: '已到岗', icon: '✅', confirmMessage: '确认已到岗？\n\n标记“已到岗”后，其他用户将看到此需求已有顾问入职，这有助于大家了解岗位实时状态。' },
+  { value: 'closed', label: '已关闭', icon: '🔒', confirmMessage: '确认需求已关闭？\n\n标记“已关闭”后，其他用户将看到此需求已停止招人。' },
+]
 
 /**
  * 标记需求状态
@@ -143,8 +175,8 @@ export async function getDemandStatusCounts(
     method: 'GET',
   })
 
-  if (!resp || !resp.ok || !resp.counts) {
-    return { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+  if (!resp || resp.ok !== true || !resp.counts) {
+    throw new Error((resp && resp.error) || 'DEMAND_STATUS_COUNTS_FAILED')
   }
 
   return {
@@ -182,14 +214,14 @@ export async function getUserDemandStatuses(
   demandId: string,
   userId: string
 ): Promise<string[]> {
-  const token = getStoredToken()
-  if (!token) return []
-
   const resp: any = await requestJson({
     url: `${API_BASE}/demand_status/user?demandId=${encodeURIComponent(String(demandId || '').trim())}&userId=${encodeURIComponent(
       String(userId || '').trim(),
     )}`,
     method: 'GET',
+    header: {
+      'x-uid': String(userId || ''),
+    },
   })
 
   if (!resp || !resp.ok || !Array.isArray(resp.statuses)) return []
@@ -270,8 +302,8 @@ export async function getDemandReliabilityCounts(
     method: 'GET',
   })
 
-  if (!resp || !resp.ok || !resp.counts) {
-    return { reliable: 0, unreliable: 0 }
+  if (!resp || resp.ok !== true || !resp.counts) {
+    throw new Error((resp && resp.error) || 'DEMAND_RELIABILITY_COUNTS_FAILED')
   }
 
   return {
@@ -287,14 +319,14 @@ export async function getUserDemandReliability(
   demandId: string,
   userId: string
 ): Promise<boolean | null> {
-  const token = getStoredToken()
-  if (!token) return null
-
   const resp: any = await requestJson({
     url: `${API_BASE}/demand_reliability/user?demandId=${encodeURIComponent(String(demandId || '').trim())}&userId=${encodeURIComponent(
       String(userId || '').trim(),
     )}`,
     method: 'GET',
+    header: {
+      'x-uid': String(userId || ''),
+    },
   })
 
   if (!resp || !resp.ok) return null
