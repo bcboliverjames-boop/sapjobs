@@ -90,5 +90,5 @@ export function getSapModuleOptionsForUi(opts?: { includeOther?: boolean }): Arr
 }
 
 export function getSapModuleFilterOptions(): Array<{ code: string; name: string }> {
-  return [{ code: 'ALL', name: '全部' }, ...getSapModuleOptionsForUi({ includeOther: true })]
+  return [{ code: 'ALL', name: '全部' }, ...getSapModuleOptionsForUi({ includeOther: false })]
 }
