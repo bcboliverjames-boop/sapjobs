@@ -713,6 +713,7 @@ const modulesForUi = computed(() => {
   ;[...BASE_MODULES, ...extraModules.value].forEach((m) => {
     const code = String(m.code || '').trim()
     if (!code) return
+    if (code.toUpperCase() === 'OTHER') return
     if (seen.has(code)) return
     seen.add(code)
     out.push({ code, name: m.name })
