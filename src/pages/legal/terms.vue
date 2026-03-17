@@ -52,7 +52,7 @@
   </view>
 </template>
 
-<script>
+<script setup lang="ts">
 import { safeNavigateBack } from '../../utils'
 
 const goBack = () => {
