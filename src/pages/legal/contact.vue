@@ -154,8 +154,8 @@ const copyEmail = () => {
 .btn {
   padding: 14rpx 18rpx;
   border-radius: 14rpx;
-  background: #0B1924;
-  color: #F5F1E8;
+  background: #D97706;
+  color: #111827;
   font-size: 24rpx;
   font-weight: 700;
 }

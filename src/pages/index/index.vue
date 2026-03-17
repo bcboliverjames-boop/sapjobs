@@ -263,7 +263,7 @@ const goToAccount = async () => {
 // 打开文档
 const openTimesheet = () => {
   // #ifdef H5
-  window.location.href = '/timesheet/'
+  window.location.href = '/timesheet/index.html'
   // #endif
 
   // #ifndef H5

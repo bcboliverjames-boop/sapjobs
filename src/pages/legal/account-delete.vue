@@ -240,13 +240,13 @@ const loading = ref(false)
   font-size: 24rpx;
   padding: 16rpx 18rpx;
   border-radius: 16rpx;
-  border: 2rpx solid rgba(17, 24, 39, 0.12);
-  background: #FFFFFF;
-  color: rgba(17, 24, 39, 0.88);
+  background: #D97706;
+  color: #111827;
+  font-weight: 800;
 }
 
 .btn-ghost {
-  border-color: rgba(244, 162, 89, 0.7);
-  background: rgba(244, 162, 89, 0.12);
+  background: #0B1924;
+  color: #F5F1E8;
 }
 </style>
