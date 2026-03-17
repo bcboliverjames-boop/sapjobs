@@ -78,15 +78,6 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
   const demandPlazaUrl = '/pages/demand/demand'
   const homeUrl = '/pages/index/index'
 
-  try {
-    if (typeof window !== 'undefined') {
-      const w = window as any
-      if (typeof w.__sapbossSafeNavigateBack !== 'function') {
-        w.__sapbossSafeNavigateBack = (next?: { delta?: number; preferUrl?: string }) => safeNavigateBack(next)
-      }
-    }
-  } catch {}
-
   const pageStackSize = (() => {
     try {
       const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : []) as any[]
@@ -173,6 +164,15 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
     }
   } catch {}
 }
+
+try {
+  if (typeof window !== 'undefined') {
+    const w = window as any
+    if (typeof w.__sapbossSafeNavigateBack !== 'function') {
+      w.__sapbossSafeNavigateBack = (next?: { delta?: number; preferUrl?: string }) => safeNavigateBack(next)
+    }
+  }
+} catch {}
 
 /**
  * 获取系统信息
