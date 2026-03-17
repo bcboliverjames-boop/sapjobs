@@ -531,7 +531,7 @@ const lookupUniqueIdByRawId = async (rawId: string): Promise<string> => {
 const toModuleLabel = (code: string): string => {
   const c = String(code || '').trim().toUpperCase()
   if (!c) return ''
-  if (c === 'OTHER') return '其他'
+  if (c === 'OTHER') return ''
   return sapModuleCodeToLabel(c)
 }
 
@@ -567,7 +567,11 @@ const mapUniqueToDemand = (doc: SapUniqueDemandDoc): SapDemandRecord => {
     return (base || [])
       .map((x: any) => String(x || '').trim())
       .map((x: string) => normalizeSapModuleToken(x) || String(x || '').trim().toUpperCase())
-      .filter(Boolean)
+      .filter((x: string) => {
+        const v = String(x || '').trim()
+        if (!v) return false
+        return v.toUpperCase() !== 'OTHER'
+      })
   })()
   const moduleLabels = moduleCodes.map(toModuleLabel).filter(Boolean)
 
@@ -582,6 +586,8 @@ const mapUniqueToDemand = (doc: SapUniqueDemandDoc): SapDemandRecord => {
     const base = tagsFromDoc.map((x) => String(x || '').trim()).filter(Boolean)
     const drop = new Set<string>()
     moduleLabels.forEach((x) => drop.add(String(x || '').trim()))
+    drop.add('OTHER')
+    drop.add('LONG')
     const cityFromAttrs = attrs ? String(attrs.city || '').trim() : ''
     if (cityFromAttrs) drop.add(cityFromAttrs)
     if (durationText) drop.add(durationText)
@@ -593,6 +599,7 @@ const mapUniqueToDemand = (doc: SapUniqueDemandDoc): SapDemandRecord => {
     for (const t of base) {
       if (!t) continue
       if (drop.has(t)) continue
+      if (drop.has(String(t).trim().toUpperCase())) continue
       if (out.includes(t)) continue
       out.push(t)
       if (out.length >= 10) break
