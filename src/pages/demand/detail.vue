@@ -43,7 +43,7 @@
 
           <!-- 结构化标签 -->
           <view class="tags-grid detail-tags-margin">
-            <view v-for="m in demand.module_labels" :key="m" class="tag-item tag-module">
+            <view v-for="m in filteredModuleLabels" :key="m" class="tag-item tag-module">
               <text class="tag-text">{{ m }}</text>
             </view>
             <view v-if="demand.city" class="tag-item tag-city">
@@ -64,7 +64,7 @@
             <view v-if="(demand as any).cooperation_mode" class="tag-item tag-mode">
               <text class="tag-text">🤝 {{ (demand as any).cooperation_mode }}</text>
             </view>
-            <view v-for="t in (demand as any).extra_tags" :key="t" class="tag-item tag-extra">
+            <view v-for="t in filteredExtraTags" :key="t" class="tag-item tag-extra">
               <text class="tag-text">{{ t }}</text>
             </view>
           </view>
@@ -238,6 +238,30 @@ const uniqueDemandId = ref<string>('')
 const viewerProfile = ref<UserProfile | null>(null)
 const currentRawId = ref<string>('')
 const relatedProfilesById = ref<Record<string, UserProfile>>({})
+
+const filteredModuleLabels = computed(() => {
+  const base = (demand.value && Array.isArray((demand.value as any).module_labels) ? (demand.value as any).module_labels : []) as any[]
+  return base
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x) => {
+      const up = x.toUpperCase()
+      if (up === 'OTHER') return false
+      if (x === '其他') return false
+      const norm = normalizeSapModuleToken(x)
+      if (norm && String(norm).toUpperCase() === 'OTHER') return false
+      return true
+    })
+})
+
+const filteredExtraTags = computed(() => {
+  const base = (demand.value && Array.isArray((demand.value as any).extra_tags) ? (demand.value as any).extra_tags : []) as any[]
+  const drop = new Set(['OTHER', 'LONG'])
+  return base
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .filter((x) => !drop.has(x.toUpperCase()))
+})
 
 const refreshAuthState = async () => {
   try {
