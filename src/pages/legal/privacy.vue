@@ -60,38 +60,11 @@
 </template>
 
 <script>
-const goBack = () => {
-  try {
-    const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    const current = pages && pages.length ? pages[pages.length - 1] : null
-    const route = String(current && (current.route || ''))
-    const isPlaza = /pages\/demand\/demand/i.test(route)
-    uni.navigateBack({
-      delta: 1,
-      fail: () => {
-        try {
-          uni.reLaunch({ url: isPlaza ? '/pages/index/index' : '/pages/demand/demand' })
-        } catch {
-          try {
-            uni.reLaunch({ url: '/pages/index/index' })
-          } catch {}
-        }
-      },
-    })
-  } catch {
-    try {
-      uni.reLaunch({ url: '/pages/demand/demand' })
-    } catch {
-      try {
-        uni.reLaunch({ url: '/pages/index/index' })
-      } catch {}
-    }
-  }
-}
+import { safeNavigateBack } from '../../utils'
 
-onMounted(() => {
-  // ...
-})
+const goBack = () => {
+  safeNavigateBack({ delta: 1 })
+}
 </script>
 
 <style scoped>

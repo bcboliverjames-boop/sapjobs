@@ -94,3 +94,106 @@
     - duration text (e.g. `6个月`)
     - module label (e.g. `FI/CO`)
   - Module filter chips should be consistent with publish page.
+
+## 2026-03-17
+
+### Checks (Public prod E2E: www.sapboss.com)
+- **Login (password-login)**: PASS (API `POST https://api.sapboss.com/auth/login` returned 200; token stored in `localStorage`)
+  - Note: UI remained on `#/pages/login/password-login` after success; manual navigation back to demand plaza confirmed authenticated state.
+- **Publish demand**: PASS
+  - Published demand text contained marker: `E2E_TEST_20260317`.
+  - Publish flow used “detect 2 demands -> batch publish” modal; batch publish completed and returned to plaza.
+- **Plaza visibility**: PASS
+  - Newly published demand was visible in `#/pages/demand/demand` list:
+    - Title: `【自动化测试】远程 FI/CO 顾问`
+- **Profile -> My published demands -> detail navigation**: PASS
+  - Entry opened detail via `#/pages/demand/detail?uniqueId=raw_ud_c684078f951d91def8d76724b94d772d`.
+- **Favorite / My favorites**: PARTIAL
+  - Favorite on detail page succeeded (`POST /favorites/add` returned 200; UI shows `已收藏`, toast `收藏成功`).
+  - “我的收藏” list contained the favorited demand and opened the same `uniqueId` detail successfully.
+  - “我的收藏” list also displayed older entries as `需求已删除` (needs follow-up; may be stale favorites or UI mapping issue).
+
+### Checks (Public prod E2E: full-site traversal addendum)
+- **Demand plaza filters/search**: PASS
+  - Clicked and exercised filters:
+    - 模块（示例：`FI/CO`）
+    - 地区（示例：`北京`）
+    - 周期（示例：`≤3个月`）
+    - 年限（示例：`4-6年`）
+    - 合作方式（示例：`Free`）
+    - 远程/现场（示例：`仅远程`）
+    - 语言（示例：`英语`）
+    - 时间范围（示例：`今日`）
+  - Searchbox exercised with marker text `E2E_TEST_20260317` then cleared.
+  - Note: When multiple filters/search were combined, list could reach “没有更多了”; in that state, previously captured element `uid` became invalid (expected for virtual DOM); resetting filters restored list.
+  - Console: no JS errors during filter interactions.
+
+- **Demand detail page actions (sample demand)**: PASS
+  - Opened detail by `uniqueId`:
+    - `#/pages/demand/detail?uniqueId=raw_ud_30c0057078320bb31bddd6595c71f957`
+  - Clicked:
+    - 收藏（became `已收藏`)
+    - 交付状态：已投递/已面试/已到岗/已关闭（UI modal appeared; canceled to avoid state mutation)
+    - 靠谱/不靠谱
+    - 复制（contact field)
+    - 投诉举报
+    - 联系我们
+  - Console: no new JS errors observed on this detail page after avoiding synthetic touch-event injection.
+
+- **Legal: 联系我们 (/pages/legal/contact)**: PASS (with content TODO)
+  - Entry from detail page: `联系我们`.
+  - “复制” button works; toast `已复制` appears.
+  - Observation: contact email currently displays placeholder `your@email.com` (needs production value).
+
+- **Legal: 投诉举报 (/pages/legal/report)**: PASS
+  - Page renders; key CTAs clickable:
+    - `复制举报模板` triggers toast `已复制`.
+    - `前往联系我们` navigates to contact page.
+    - `提交举报` is clickable (form not submitted).
+  - Console: DevTools issue only: `A form field element should have an id or name attribute`.
+
+- **Legal: 隐私政策 (/pages/legal/privacy)**: FAIL
+  - Page displays: `连接服务器超时，点击屏幕重试` and does not recover after retry.
+  - Console error: `ReferenceError: onMounted is not defined`.
+
+- **Legal: 用户协议 (/pages/legal/agreement)**: FAIL
+  - Route loads but page renders blank (no visible text; `document.body.innerText` length observed as 0).
+  - After reload (ignore cache), still blank; no explicit console error observed.
+  - Network observed unexpected legal chunk previously loaded: `assets/pages-legal-privacy.*.js`.
+
+- **Legal: 注销与删除 (/pages/legal/delete-account)**: FAIL
+  - Route loads but page renders blank (no visible text; `document.body.innerText` length observed as 0).
+  - After reload (ignore cache), still blank; no explicit console error observed.
+  - Network did not show an obvious `pages-legal-delete-account` chunk being loaded (suspect missing route/chunk).
+
+### Checks (Public prod E2E: profile & favorites traversal addendum)
+- **Profile page (/pages/profile/profile) entry points**: PASS
+  - Verified sections/entries present and navigable:
+    - `我的资料`
+    - `我发布的需求`
+    - `我的收藏`
+    - `账号注销 / 个人信息删除申请`
+  - Console: DevTools issue only: `A form field element should have an id or name attribute`.
+
+- **Profile -> My published demands -> open detail -> back**: PASS
+  - Opened first item from `我发布的需求` and landed on:
+    - `#/pages/demand/detail?uniqueId=raw_ud_c684078f951d91def8d76724b94d772d`
+  - Back navigation returned to profile page successfully.
+
+- **Profile -> Favorites list**: PARTIAL
+  - Favorites list rendered; included entries labeled `需求已删除`.
+  - Clicking a `需求已删除` entry still navigated to a detail route:
+    - Example: `#/pages/demand/detail?uniqueId=raw_ud_d8416057f230b84e465b6a5b7665f060`
+    - Detail showed placeholder-like content (e.g. `来源：示例数据`, `发布者未同步，暂无联系方式`).
+  - Network errors observed (root cause for `需求已删除`):
+    - `GET https://api.sapboss.com/unique_demands/raw_ud_d8416057f230b84e465b6a5b7665f060` -> 404
+    - `GET https://api.sapboss.com/unique_demands/raw_ud_b966ece7085fdd2a186bff163c2bf7c2` -> 404
+  - Console: `Failed to load resource: the server responded with a status of 404 (Not Found)`.
+
+- **Profile -> Account delete request page (/pages/legal/account-delete)**: PASS (with content TODO)
+  - Entry from profile `账号注销 / 个人信息删除申请` loads and renders.
+  - Buttons exercised:
+    - `复制` (email)
+    - `复制申请模板`
+    - `一键发邮件（H5）` (launched `mailto:` external handler)
+  - Observation: email still shows placeholder `your@email.com` (needs production value).

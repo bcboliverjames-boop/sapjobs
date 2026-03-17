@@ -78,6 +78,15 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
   const demandPlazaUrl = '/pages/demand/demand'
   const homeUrl = '/pages/index/index'
 
+  const pageStackSize = (() => {
+    try {
+      const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : []) as any[]
+      return pages && typeof pages.length === 'number' ? pages.length : 0
+    } catch {
+      return 0
+    }
+  })()
+
   const isOnDemandPlaza = (() => {
     try {
       const pages = (typeof getCurrentPages === 'function' ? getCurrentPages() : []) as any[]
@@ -95,6 +104,17 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
   })()
 
   const fallbackUrl = isOnDemandPlaza ? homeUrl : (preferUrl || demandPlazaUrl)
+
+  if (pageStackSize <= 1) {
+    try {
+      uni.reLaunch({ url: fallbackUrl })
+    } catch {
+      try {
+        uni.reLaunch({ url: homeUrl })
+      } catch {}
+    }
+    return
+  }
 
   try {
     uni.navigateBack({

@@ -914,6 +914,10 @@ onLoad(async (options) => {
         }
         return
       }
+
+      // uniqueId was provided but record not found.
+      demand.value = null
+      return
     }
 
     if (id) {
@@ -965,13 +969,18 @@ onLoad(async (options) => {
         isFavorited.value = await resolveFavoriteState([uniqueDemandId.value, decodedId])
         return
       }
+
+      // id was provided but record not found.
+      demand.value = null
+      return
     }
-    // 没有 id 或云端找不到时，退回本地示例
+
+    // No id/uniqueId provided; keep legacy demo fallback.
     demand.value = SAMPLE_DEMANDS[0] || null
     viewerProfile.value = await getUserProfileOnly()
   } catch (e) {
     console.error('Failed to load demand detail:', e)
-    demand.value = SAMPLE_DEMANDS[0] || null
+    demand.value = null
   } finally {
     loading.value = false
   }

@@ -683,63 +683,6 @@ const loadMyFavorites = async () => {
         }
       })
       .filter((x: any) => x && x.unique_demand_id)
-
-    const missingTextIds = myFavorites.value
-      .filter((x: any) => x && x.unique_demand_id && String(x.demand_text || '').trim() === '需求已删除')
-      .map((x: any) => String(x.unique_demand_id || '').trim())
-      .filter(Boolean)
-      .slice(0, 50)
-
-    if (missingTextIds.length) {
-      const enrichBases = (() => {
-        const out = [...bases]
-        try {
-          if (typeof window !== 'undefined') {
-            const host = String(window.location && window.location.hostname)
-            if (/^(localhost|127\.0\.0\.1)$/i.test(host)) {
-              out.push('http://127.0.0.1:3001')
-              out.push('http://localhost:3001')
-            }
-          }
-        } catch {
-          // ignore
-        }
-        return Array.from(new Set(out.map((x) => String(x || '').trim()).filter(Boolean)))
-      })()
-
-      for (const base of enrichBases) {
-        try {
-          const baseTrim = String(base).replace(/\/+$/, '')
-          let updatedAny = false
-          await Promise.all(
-            missingTextIds.map(async (id) => {
-              try {
-                const resp: any = await requestJson({
-                  url: `${baseTrim}/unique_demands/${encodeURIComponent(id)}`,
-                  method: 'GET',
-                  header,
-                })
-                if (resp && resp.ok && resp.demand) {
-                  const raw = String(resp.demand.raw_text || '').trim()
-                  if (raw) {
-                    const hit = myFavorites.value.find((it: any) => String(it.unique_demand_id || '').trim() === id)
-                    if (hit) {
-                      hit.demand_text = raw
-                      updatedAny = true
-                    }
-                  }
-                }
-              } catch {
-                // ignore
-              }
-            }),
-          )
-          if (updatedAny) break
-        } catch {
-          // try next base
-        }
-      }
-    }
   } catch (e) {
     console.error('加载我的收藏失败:', e)
     myFavorites.value = []
@@ -799,6 +742,12 @@ const formatFavoriteTime = (timestamp: any) => {
 const goToDemandDetail = (demandOrId: any) => {
   const rawId = String(typeof demandOrId === 'string' ? demandOrId : (demandOrId && (demandOrId.id || demandOrId._id)) || '').trim()
   const uniqueId = String(typeof demandOrId === 'object' && demandOrId ? (demandOrId.unique_demand_id || (demandOrId as any).uniqueId) : '').trim()
+  const demandText = String(typeof demandOrId === 'object' && demandOrId ? (demandOrId.demand_text || '') : '').trim()
+
+  if (demandText === '需求已删除') {
+    uni.showToast({ title: '该需求已删除', icon: 'none' })
+    return
+  }
   if (uniqueId) {
     navigateTo(`/pages/demand/detail?uniqueId=${encodeURIComponent(uniqueId)}`)
     return
