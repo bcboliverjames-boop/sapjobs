@@ -417,7 +417,7 @@ import {
   type SapUniqueDemandDoc,
 } from '../../utils/sap-unique-demands'
 import { refreshAllDemandsTags } from '../../utils/sap-demands'
-import { getSapModuleFilterOptions, normalizeSapModuleToken, sapModuleCodeToLabel } from '../../utils/sap-modules'
+import { getSapModuleOptionsForUi, normalizeSapModuleToken, sapModuleCodeToLabel } from '../../utils/sap-modules'
 import { getRewardPoints } from '../../utils/points-config'
 import {
   markDemandStatus,
@@ -703,7 +703,7 @@ const getStatusOverride = (id: string): string[] | undefined => {
   return hit.value
 }
 
-const BASE_MODULES = getSapModuleFilterOptions()
+const BASE_MODULES = [{ code: 'ALL', name: '全部' }, ...getSapModuleOptionsForUi({ includeOther: false })]
 
 const extraModules = ref<{ code: string; name: string }[]>([])
 
@@ -1943,10 +1943,16 @@ onLoad((options) => {
   const tf = String((options as any)?.timeField || '').trim().toUpperCase()
 
   if (module) {
-    if (!BASE_MODULES.some((m) => m.code === module) && !extraModules.value.some((m) => m.code === module)) {
-      extraModules.value = [...extraModules.value, { code: module, name: module }]
+    const code = normalizeSapModuleToken(module) || module
+    const up = String(code || '').trim().toUpperCase()
+    if (up !== 'OTHER' && up !== 'ALL') {
+      if (!BASE_MODULES.some((m) => m.code === code) && !extraModules.value.some((m) => m.code === code)) {
+        extraModules.value = [...extraModules.value, { code, name: code }]
+      }
+      activeModule.value = code
+    } else {
+      activeModule.value = 'ALL'
     }
-    activeModule.value = module
   }
 
   if (tr === 'TODAY' || tr === 'WEEK' || tr === 'ALL') {

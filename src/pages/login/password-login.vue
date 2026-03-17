@@ -53,8 +53,6 @@
       
       <!-- 快捷链接 -->
       <view class="quick-links">
-        <navigator url="/pages/login/phone-login" class="link-text">手机验证码登录</navigator>
-        <navigator url="/pages/login/email-login" class="link-text">邮箱验证码登录</navigator>
         <navigator url="/pages/login/register" class="link-text">注册</navigator>
       </view>
     </view>
