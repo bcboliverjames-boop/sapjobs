@@ -116,20 +116,16 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
     return
   }
 
+  let beforeHref = ''
+  let beforeHash = ''
   try {
-    uni.navigateBack({
-      delta,
-      fail: () => {
-        try {
-          uni.reLaunch({ url: fallbackUrl })
-        } catch {
-          try {
-            uni.reLaunch({ url: homeUrl })
-          } catch {}
-        }
-      },
-    })
-  } catch {
+    if (typeof window !== 'undefined' && window.location) {
+      beforeHref = String(window.location.href || '')
+      beforeHash = String(window.location.hash || '')
+    }
+  } catch {}
+
+  const fallback = () => {
     try {
       uni.reLaunch({ url: fallbackUrl })
     } catch {
@@ -138,6 +134,35 @@ export function safeNavigateBack(opts?: { delta?: number; preferUrl?: string }) 
       } catch {}
     }
   }
+
+  try {
+    uni.navigateBack({
+      delta,
+      fail: () => {
+        fallback()
+      },
+    })
+  } catch {
+    fallback()
+    return
+  }
+
+  // H5: uni.navigateBack may silently do nothing and not trigger fail when there's no page stack.
+  try {
+    if (typeof window !== 'undefined' && window.location && typeof window.setTimeout === 'function') {
+      window.setTimeout(() => {
+        try {
+          const nextHref = String(window.location.href || '')
+          const nextHash = String(window.location.hash || '')
+          if (nextHref === beforeHref && nextHash === beforeHash) {
+            fallback()
+          }
+        } catch {
+          fallback()
+        }
+      }, 300)
+    }
+  } catch {}
 }
 
 /**
