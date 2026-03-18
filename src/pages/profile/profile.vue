@@ -226,7 +226,7 @@ import { logout, ensureLogin } from '../../utils/cloudbase'
 import { getLastLoginIdentifier, getMyAccountInfo, getOrCreateUserProfile, updateUserProfile, type UserProfile } from '../../utils/user'
 import { getRewardPoints, getThresholdPoints } from '../../utils/points-config'
 import { navigateTo, safeNavigateBack } from '../../utils'
-import { isAdminUid } from '../../utils/admin'
+import { requireAdmin } from '../../utils/admin'
 
 function getApiBase(): string {
   try {
@@ -363,7 +363,12 @@ const getUserInfo = async () => {
 
     if (loginState && loginState.user && !(loginState.user as any)?._isGuest) {
       userInfo.value = loginState.user
-      isAdmin.value = isAdminUid(String((loginState.user as any)?.uid || '').trim())
+      try {
+        await requireAdmin()
+        isAdmin.value = true
+      } catch {
+        isAdmin.value = false
+      }
       console.log('用户登录状态loginState:', loginState)
       console.log('完整用户信息loginState.user:', loginState.user)
       accountInfo.value = await getMyAccountInfo()

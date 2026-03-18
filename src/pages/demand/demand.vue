@@ -432,7 +432,7 @@ import {
 } from '../../utils/demand-status'
 import { getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
 import { ugcReactionToggle } from '../../utils/ugc'
-import { isAdminUid } from '../../utils/admin'
+import { requireAdmin } from '../../utils/admin'
 import { safeNavigateBack } from '../../utils'
 
 function getApiBase(): string {
@@ -1838,7 +1838,16 @@ const refreshAuthState = async () => {
     const state: any = await ensureLogin()
     const nextGuest = !!(state && isGuestUser(state.user))
     isGuest.value = nextGuest
-    isAdmin.value = isLocalhostRuntime() || isAdminUid(String((state && state.user && (state.user as any).uid) || '').trim())
+    if (isLocalhostRuntime() || !nextGuest) {
+      try {
+        await requireAdmin()
+        isAdmin.value = true
+      } catch {
+        isAdmin.value = isLocalhostRuntime()
+      }
+    } else {
+      isAdmin.value = false
+    }
 
     // When switching from guest -> logged-in, refresh list so favorites/status become interactive.
     if (prevGuest && !nextGuest) {
