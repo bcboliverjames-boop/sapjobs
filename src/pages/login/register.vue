@@ -204,7 +204,15 @@ const handleRegister = async () => {
 
     uni.showToast({ title: '注册成功', icon: 'success' })
     setTimeout(() => {
-      redirectToPasswordLogin(identifier.value.trim())
+      try {
+        uni.reLaunch({ url: '/pages/demand/demand' })
+      } catch {
+        try {
+          uni.redirectTo({ url: '/pages/demand/demand' })
+        } catch {
+          redirectToPasswordLogin(identifier.value.trim())
+        }
+      }
     }, 800)
   } catch (e: any) {
     uni.showToast({ title: String(e?.message || '注册失败'), icon: 'none' })

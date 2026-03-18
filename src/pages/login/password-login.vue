@@ -1,5 +1,14 @@
 ﻿<template>
   <view class="login-container">
+    <view class="page-header-unified">
+      <view class="page-header-content">
+        <view class="header-left" @tap="goBackOrHome">
+          <uni-icons type="back" size="20" color="#F5F1E8" />
+        </view>
+        <text class="page-header-title">密码登录</text>
+        <view class="header-right"></view>
+      </view>
+    </view>
     <view class="login-header">
       <text class="title">密码登录</text>
       <text class="subtitle">支持手机号/邮箱/用户名 + 密码登录</text>
@@ -191,7 +200,15 @@ const handleLogin = async () => {
           url: redirectUrl.value
         })
       } else {
-        goBackOrHome()
+        try {
+          uni.reLaunch({ url: '/pages/demand/demand' })
+        } catch {
+          try {
+            uni.redirectTo({ url: '/pages/demand/demand' })
+          } catch {
+            goBackOrHome()
+          }
+        }
       }
     }, 300)
     
@@ -233,10 +250,45 @@ const goToRegister = () => {
 </script>
 
 <style scoped>
+.page-header-unified {
+  background: #0B1924;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
+  width: 100%;
+}
+
+.page-header-content {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 24rpx;
+}
+
+.page-header-title {
+  color: #F5F1E8;
+  font-size: 32rpx;
+  font-weight: 800;
+  letter-spacing: 2rpx;
+}
+
+.header-left,
+.header-right {
+  width: 80rpx;
+  display: flex;
+  align-items: center;
+}
+
 .login-container {
   min-height: 100vh;
   background: #F3F4F6;
-  padding: 64rpx 36rpx 44rpx;
+  padding: 0 36rpx 44rpx;
   box-sizing: border-box;
   color: #111827;
   font-family: "Noto Sans SC", "Source Han Sans SC", "PingFang SC", sans-serif;
@@ -261,6 +313,7 @@ const goToRegister = () => {
 .login-header {
   text-align: left;
   margin-bottom: 44rpx;
+  padding-top: 64rpx;
   position: relative;
   z-index: 1;
 }

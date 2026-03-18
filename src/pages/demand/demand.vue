@@ -265,7 +265,7 @@
          </view>
 
          <!-- 状态和评价栏（可点击） -->
-         <view class="card-status-bar" @tap.stop>
+         <view class="card-status-bar" @tap="goDetail(card)">
            <view 
              class="card-status-item"
              :class="[
@@ -332,7 +332,7 @@
            </view>
          </view>
 
-         <view class="card-reliability-bar" @tap.stop>
+         <view class="card-reliability-bar" @tap="goDetail(card)">
           <view 
             class="card-reliability-item card-reliability-item--reliable"
             :class="{ 'card-reliability-item--active': card.userReliability === true, 'guest-disabled': isGuest }"

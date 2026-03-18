@@ -37,7 +37,7 @@ export function parseDemandText(rawText: string): {
     { pattern: /fiori|菲奥里/i, code: 'FIORI' },
     { pattern: /pm|设备|维护/i, code: 'PM' },
     // PS 只能在明确语境下命中，避免把“项目/长期项目”等误判为 PS
-    { pattern: /(?:^|[^a-zA-Z0-9])ps(?:$|[^a-zA-Z0-9])/i, code: 'PS' },
+    { pattern: /(?:^|[^a-zA-Z0-9])PS(?:$|[^a-zA-Z0-9])/, code: 'PS' },
     { pattern: /mdg|主数据/i, code: 'MDG' },
   ]
   
