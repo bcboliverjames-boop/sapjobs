@@ -26,6 +26,18 @@ function getApiBase(): string {
 const API_BASE = getApiBase()
 const API_TOKEN_KEY = 'sapboss_api_token'
 
+const USER_BULK_TTL_MS = 8000
+const userStatusesBulkCache = new Map<string, { ts: number; data: Record<string, string[]> }>()
+const userStatusesBulkInflight = new Map<string, Promise<Record<string, string[]>>>()
+const userReliabilityBulkCache = new Map<string, { ts: number; data: Record<string, boolean | null> }>()
+const userReliabilityBulkInflight = new Map<string, Promise<Record<string, boolean | null>>>()
+
+function buildDemandIdsKey(demandIds: string[]): string {
+  const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+  uniq.sort()
+  return uniq.join(',')
+}
+
 function isLocalhostRuntime(): boolean {
   try {
     if (typeof window === 'undefined') return false
@@ -187,6 +199,37 @@ export async function getDemandStatusCounts(
   }
 }
 
+export async function getDemandStatusCountsBulk(
+  demandIds: string[]
+): Promise<Record<string, { applied: number; interviewed: number; onboarded: number; closed: number }>> {
+  const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+  if (!uniq.length) return {}
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_status/counts_bulk`,
+    method: 'POST',
+    data: {
+      demandIds: uniq,
+    },
+  })
+
+  if (!resp || resp.ok !== true || !resp.counts) {
+    throw new Error((resp && resp.error) || 'DEMAND_STATUS_COUNTS_BULK_FAILED')
+  }
+
+  const out: Record<string, any> = {}
+  uniq.forEach((id) => {
+    const row = resp.counts[id]
+    out[id] = {
+      applied: Number(row?.applied || 0),
+      interviewed: Number(row?.interviewed || 0),
+      onboarded: Number(row?.onboarded || 0),
+      closed: Number(row?.closed || 0),
+    }
+  })
+  return out as any
+}
+
 /**
  * 获取指定状态的最新标记昵称（按时间倒序取最新一条）
  */
@@ -226,6 +269,52 @@ export async function getUserDemandStatuses(
 
   if (!resp || !resp.ok || !Array.isArray(resp.statuses)) return []
   return resp.statuses.map((x: any) => String(x || '').trim()).filter(Boolean)
+}
+
+export async function getUserDemandStatusesBulk(
+  demandIds: string[],
+  userId: string
+): Promise<Record<string, string[]>> {
+  const uid = String(userId || '').trim()
+  if (!uid) return {}
+
+  const key = `${uid}|${buildDemandIdsKey(demandIds)}`
+  if (key.endsWith('|')) return {}
+
+  const now = Date.now()
+  const cached = userStatusesBulkCache.get(key)
+  if (cached && now - cached.ts <= USER_BULK_TTL_MS) return cached.data
+
+  const inflight = userStatusesBulkInflight.get(key)
+  if (inflight) return inflight
+
+  const promise = (async () => {
+    const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+    if (!uniq.length) return {}
+
+    const resp: any = await requestJson({
+      url: `${API_BASE}/demand_status/user_bulk`,
+      method: 'POST',
+      data: {
+        demandIds: uniq,
+        userId: uid,
+      },
+      header: {
+        'x-uid': String(uid || ''),
+      },
+    })
+
+    const data: Record<string, string[]> = resp && resp.ok && resp.statuses ? (resp.statuses as any) : {}
+    userStatusesBulkCache.set(key, { ts: Date.now(), data })
+    return data
+  })()
+
+  userStatusesBulkInflight.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    userStatusesBulkInflight.delete(key)
+  }
 }
 
 /**
@@ -312,6 +401,35 @@ export async function getDemandReliabilityCounts(
   }
 }
 
+export async function getDemandReliabilityCountsBulk(
+  demandIds: string[]
+): Promise<Record<string, { reliable: number; unreliable: number }>> {
+  const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+  if (!uniq.length) return {}
+
+  const resp: any = await requestJson({
+    url: `${API_BASE}/demand_reliability/counts_bulk`,
+    method: 'POST',
+    data: {
+      demandIds: uniq,
+    },
+  })
+
+  if (!resp || resp.ok !== true || !resp.counts) {
+    throw new Error((resp && resp.error) || 'DEMAND_RELIABILITY_COUNTS_BULK_FAILED')
+  }
+
+  const out: Record<string, any> = {}
+  uniq.forEach((id) => {
+    const row = resp.counts[id]
+    out[id] = {
+      reliable: Number(row?.reliable || 0),
+      unreliable: Number(row?.unreliable || 0),
+    }
+  })
+  return out as any
+}
+
 /**
  * 获取当前用户的评价（如果有）
  */
@@ -333,4 +451,50 @@ export async function getUserDemandReliability(
   if (resp.reliable === true) return true
   if (resp.reliable === false) return false
   return null
+}
+
+export async function getUserDemandReliabilityBulk(
+  demandIds: string[],
+  userId: string
+): Promise<Record<string, boolean | null>> {
+  const uid = String(userId || '').trim()
+  if (!uid) return {}
+
+  const key = `${uid}|${buildDemandIdsKey(demandIds)}`
+  if (key.endsWith('|')) return {}
+
+  const now = Date.now()
+  const cached = userReliabilityBulkCache.get(key)
+  if (cached && now - cached.ts <= USER_BULK_TTL_MS) return cached.data
+
+  const inflight = userReliabilityBulkInflight.get(key)
+  if (inflight) return inflight
+
+  const promise = (async () => {
+    const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+    if (!uniq.length) return {}
+
+    const resp: any = await requestJson({
+      url: `${API_BASE}/demand_reliability/user_bulk`,
+      method: 'POST',
+      data: {
+        demandIds: uniq,
+        userId: uid,
+      },
+      header: {
+        'x-uid': String(uid || ''),
+      },
+    })
+
+    const data: Record<string, boolean | null> = resp && resp.ok && resp.reliability ? (resp.reliability as any) : {}
+    userReliabilityBulkCache.set(key, { ts: Date.now(), data })
+    return data
+  })()
+
+  userReliabilityBulkInflight.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    userReliabilityBulkInflight.delete(key)
+  }
 }

@@ -61,6 +61,61 @@ app.use(
   }),
 )
 
+if (String(process.env.PERF_LOG || '').trim() === '1') {
+  const perfAgg = new Map()
+  const slowMs = Math.max(0, Number(process.env.PERF_SLOW_MS || 1500))
+
+  function perfKey(req) {
+    const method = String(req && req.method || '').toUpperCase()
+    const path = String(req && (req.baseUrl || '') || '') + String(req && (req.path || req.url || '') || '')
+    return `${method} ${path.split('?')[0]}`
+  }
+
+  app.use((req, res, next) => {
+    const start = Date.now()
+    const key = perfKey(req)
+    res.on('finish', () => {
+      const dur = Date.now() - start
+      const prev = perfAgg.get(key) || { count: 0, total: 0, max: 0, statusCounts: new Map() }
+      prev.count += 1
+      prev.total += dur
+      prev.max = Math.max(prev.max || 0, dur)
+      const sc = Number(res.statusCode || 0)
+      prev.statusCounts.set(sc, (prev.statusCounts.get(sc) || 0) + 1)
+      perfAgg.set(key, prev)
+      if (slowMs > 0 && dur >= slowMs) {
+        console.warn('perf_slow', { key, status: sc, ms: dur })
+      }
+    })
+    next()
+  })
+
+  setInterval(() => {
+    try {
+      const rows = []
+      for (const [key, v] of perfAgg.entries()) {
+        const avg = v && v.count ? Math.round(v.total / v.count) : 0
+        const scObj = {}
+        if (v && v.statusCounts && v.statusCounts.size) {
+          for (const [k, n] of v.statusCounts.entries()) scObj[String(k)] = n
+        }
+        rows.push({ key, count: v.count || 0, avg_ms: avg, max_ms: v.max || 0, status: scObj })
+      }
+      rows.sort((a, b) => (b.avg_ms - a.avg_ms) || (b.max_ms - a.max_ms) || (b.count - a.count))
+      console.log('perf_summary', { top: rows.slice(0, 25) })
+      perfAgg.clear()
+    } catch (e) {
+      console.error('perf_summary_failed', e)
+    }
+  }, Math.max(5000, Number(process.env.PERF_FLUSH_MS || 30000)))
+}
+
+// Serve built frontend (optional)
+if (String(process.env.SERVE_FRONTEND || '').trim() === '1') {
+  const dist = path.join(__dirname, '..', 'dist', 'build', 'h5')
+  app.use(express.static(dist))
+}
+
 const pool = new Pool({
   host: process.env.PGHOST,
   port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
@@ -501,6 +556,67 @@ async function resolveDemandIdNum(input) {
   return null
 }
 
+async function resolveDemandIdNums(inputs) {
+  const rawList = Array.isArray(inputs) ? inputs : []
+  const cleaned = rawList
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+
+  const mapping = new Map()
+  const directNums = []
+  const rawUniqueIds = []
+
+  for (const raw of cleaned) {
+    const direct = parseDemandIdNum(raw)
+    if (direct) {
+      mapping.set(raw, direct)
+      directNums.push(direct)
+      continue
+    }
+    if (/^raw_ud_/i.test(raw)) {
+      rawUniqueIds.push(raw)
+      continue
+    }
+    mapping.set(raw, null)
+  }
+
+  if (rawUniqueIds.length) {
+    try {
+      await ensureDemandsTable()
+      const r = await pool.query(
+        `SELECT DISTINCT ON (unique_demand_id) unique_demand_id, id
+         FROM sap_demands
+         WHERE unique_demand_id = ANY($1::text[])
+         ORDER BY unique_demand_id, created_at DESC`,
+        [rawUniqueIds],
+      )
+      for (const row of r.rows || []) {
+        const key = String(row.unique_demand_id || '').trim()
+        if (!key) continue
+        const idNum = parseDemandIdNum(row.id)
+        mapping.set(key, idNum || null)
+      }
+      rawUniqueIds.forEach((k) => {
+        if (!mapping.has(k)) mapping.set(k, null)
+      })
+    } catch (e) {
+      console.error('resolve_demand_ids_batch_failed', e)
+      rawUniqueIds.forEach((k) => {
+        if (!mapping.has(k)) mapping.set(k, null)
+      })
+    }
+  }
+
+  const uniqNums = Array.from(
+    new Set(
+      Array.from(mapping.values())
+        .map((x) => (x ? Number(x) : null))
+        .filter((x) => Number.isFinite(x) && x > 0),
+    ),
+  )
+  return { mapping, nums: uniqNums }
+}
+
 function normModule(m) {
   const s = String(m || '').trim().toUpperCase().replace(/\s+/g, '')
   const t = s.replace(/\\/g, '/').replace(/\|/g, '/').replace(/／/g, '/').replace(/＼/g, '/')
@@ -830,6 +946,21 @@ function normalizeRawDemandForStorage(payload) {
     is_remote,
     language_tag: normalizeLanguageTag(p.language_tag || p.language),
   }
+}
+
+function countDemandInfoDims(d) {
+  const x = d && typeof d === 'object' ? d : {}
+  let n = 0
+  const city = String(x.city || '').trim()
+  if (city && city !== '远程') n += 1
+  if (typeof x.is_remote === 'boolean') n += 1
+  if (String(x.duration_text || x.durationText || '').trim()) n += 1
+  if (String(x.years_text || x.yearsText || '').trim()) n += 1
+  if (String(x.language_tag || x.language || '').trim()) n += 1
+  if (String(x.daily_rate || x.dailyRate || '').trim()) n += 1
+  if (String(x.consultant_level || x.consultantLevel || '').trim()) n += 1
+  if (String(x.cooperation_mode || x.cooperationMode || '').trim()) n += 1
+  return n
 }
 
 function inferYearsBucket(yearsText, consultantLevel) {
@@ -2257,6 +2388,51 @@ app.get('/health', async (req, res) => {
   }
 })
 
+app.post('/demand_status/counts_bulk', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  try {
+    await ensureDemandStatusTable()
+    const body = (req && req.body) || {}
+    const demandIds = Array.isArray(body.demandIds) ? body.demandIds : []
+
+    const { mapping, nums } = await resolveDemandIdNums(demandIds)
+    if (!mapping.size) {
+      res.json({ ok: true, counts: {} })
+      return
+    }
+
+    const baseCountsByNum = new Map()
+    if (nums.length) {
+      const r = await pool.query(
+        'SELECT demand_id, status, COUNT(*)::int AS cnt FROM sap_demand_status WHERE demand_id = ANY($1::bigint[]) GROUP BY demand_id, status',
+        [nums],
+      )
+      for (const row of r.rows || []) {
+        const idNum = Number(row.demand_id)
+        if (!Number.isFinite(idNum) || idNum <= 0) continue
+        const s = String(row.status || '').trim()
+        if (!s) continue
+        if (!baseCountsByNum.has(idNum)) baseCountsByNum.set(idNum, { applied: 0, interviewed: 0, onboarded: 0, closed: 0 })
+        const bucket = baseCountsByNum.get(idNum)
+        bucket[s] = Number(row.cnt || 0)
+      }
+    }
+
+    const out = {}
+    for (const [raw, idNum] of mapping.entries()) {
+      if (idNum) out[raw] = baseCountsByNum.get(idNum) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+      else out[raw] = { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+    }
+    res.json({ ok: true, counts: out })
+  } catch (e) {
+    console.error('demand_status_counts_bulk_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
 app.post('/admin/unique_demands/reparse_recent', async (req, res) => {
   if (!demandsFeatureEnabled()) {
     demandsGone(res)
@@ -2330,6 +2506,129 @@ app.post('/admin/unique_demands/reparse_recent', async (req, res) => {
     res.json({ ok: true, updated, requested: updates.length })
   } catch (e) {
     console.error('admin_unique_demands_reparse_recent_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/admin/unique_demands/cleanup_invalid', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+
+  const admin = requireAdminAuth(req, res)
+  if (!admin) return
+
+  try {
+    await ensureUniqueDemandsTable()
+    const body = (req && req.body) || {}
+    const days = Math.max(1, Math.min(3650, Number(body.days || 365)))
+    const limit = Math.max(1, Math.min(50000, Number(body.limit || 20000)))
+    const dryRun = body && (body.dryRun === true || body.dryRun === 1 || body.dryRun === '1' || body.dryRun === 'true')
+    const sample = Math.max(0, Math.min(100, Number(body.sample || 20)))
+
+    const r = await pool.query(
+      `SELECT doc_id, raw_text, demand_type
+       FROM sap_unique_demands
+       WHERE created_at >= (now() - ($1::int * interval '1 day'))
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [Math.trunc(days), Math.trunc(limit)],
+    )
+
+    const rows = (r && r.rows) || []
+    const reasons = new Map()
+    const bad = []
+    const samples = []
+
+    function bump(reason) {
+      reasons.set(reason, (reasons.get(reason) || 0) + 1)
+    }
+
+    function toPreview(text) {
+      const s = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+      const oneLine = s.split('\n').map((x) => String(x || '').trim()).filter(Boolean).slice(0, 2).join(' / ')
+      if (!oneLine) return ''
+      return oneLine.length > 180 ? `${oneLine.slice(0, 180)}...` : oneLine
+    }
+
+    for (const row of rows) {
+      const docId = String(row && row.doc_id || '').trim()
+      if (!docId) continue
+      const rawText0 = String(row && row.raw_text || '')
+      const rawTrim = String(rawText0 || '').trim()
+
+      let reason = ''
+      if (!rawTrim || rawTrim.length < 20) {
+        reason = 'TOO_SHORT'
+      } else {
+        const newlineCount = (rawText0.match(/\n/g) || []).length
+        if (rawText0.length > 500 || newlineCount >= 3) {
+          reason = 'RAW_TEXT_BLOCKY'
+        } else {
+          const inferred = parseDemandFromRawText(rawTrim)
+          if (!inferred || !Array.isArray(inferred.module_codes) || !inferred.module_codes.length) {
+            reason = 'NO_MODULE'
+          } else if (countDemandInfoDims(inferred) < 2) {
+            reason = 'DIMENSIONS_TOO_FEW'
+          }
+        }
+      }
+
+      if (!reason) continue
+
+      bump(reason)
+      bad.push({ doc_id: docId, reason })
+      if (sample > 0 && samples.length < sample) {
+        samples.push({ doc_id: docId, reason, demand_type: String(row && row.demand_type || ''), preview: toPreview(rawTrim) })
+      }
+    }
+
+    const summary = {}
+    for (const [k, v] of reasons.entries()) summary[k] = v
+
+    if (dryRun) {
+      res.json({ ok: true, dryRun: true, scanned: rows.length, invalid: bad.length, summary, samples })
+      return
+    }
+
+    if (!bad.length) {
+      res.json({ ok: true, dryRun: false, scanned: rows.length, invalid: 0, updated: 0, summary, samples })
+      return
+    }
+
+    const CHUNK = 500
+    let updated = 0
+    for (let i = 0; i < bad.length; i += CHUNK) {
+      const chunk = bad.slice(i, i + CHUNK)
+      const vals = []
+      const rowsSql = []
+      let p = 1
+      for (const it of chunk) {
+        rowsSql.push(`($${p++}, $${p++})`)
+        vals.push(it.doc_id, it.reason)
+      }
+
+      const sql = `
+        WITH v(doc_id, reason) AS (
+          VALUES ${rowsSql.join(',')}
+        )
+        UPDATE sap_unique_demands u
+        SET
+          demand_type = 'invalid',
+          updated_at_db = now()
+        FROM v
+        WHERE u.doc_id = v.doc_id
+        RETURNING u.doc_id
+      `
+
+      const ur = await pool.query(sql, vals)
+      updated += (ur && ur.rowCount) || 0
+    }
+
+    res.json({ ok: true, dryRun: false, scanned: rows.length, invalid: bad.length, updated, summary, samples })
+  } catch (e) {
+    console.error('admin_unique_demands_cleanup_invalid_failed', e)
     res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
   }
 })
@@ -2826,10 +3125,19 @@ app.get('/unique_demands/range', async (req, res) => {
     const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
     const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
 
+    const moduleRaw = String((req.query && req.query.module) || '').trim()
+    const moduleUp = moduleRaw ? moduleRaw.toUpperCase() : ''
+    const module = /^[A-Z0-9_\/-]{1,24}$/.test(moduleUp) && moduleUp !== 'ALL' && moduleUp !== 'OTHER' ? moduleUp : ''
+
     let sql = `SELECT * FROM sap_unique_demands WHERE ${field} >= $1 AND ${field} < $2`
     const vals = [Math.trunc(startTs), Math.trunc(endTs)]
     let idx = 3
     if (onlyValid) sql += " AND demand_type = 'valid'"
+    if (module) {
+      sql += ` AND ((tags_json ILIKE $${idx}) OR (attributes_json ILIKE $${idx}))`
+      vals.push(`%\"${module}\"%`)
+      idx += 1
+    }
     sql += ` ORDER BY ${field} ${order}, doc_id ${order}`
     sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
     vals.push(offset, limit)
@@ -2860,11 +3168,22 @@ app.get('/unique_demands/list', async (req, res) => {
     const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
     const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
 
+    const moduleRaw = String((req.query && req.query.module) || '').trim()
+    const moduleUp = moduleRaw ? moduleRaw.toUpperCase() : ''
+    const module = /^[A-Z0-9_\/-]{1,24}$/.test(moduleUp) && moduleUp !== 'ALL' && moduleUp !== 'OTHER' ? moduleUp : ''
+
     let sql = 'SELECT * FROM sap_unique_demands'
     const vals = []
     let idx = 1
-    if (onlyValid) {
-      sql += " WHERE demand_type = 'valid'"
+    const wheres = []
+    if (onlyValid) wheres.push("demand_type = 'valid'")
+    if (module) {
+      wheres.push(`((tags_json ILIKE $${idx}) OR (attributes_json ILIKE $${idx}))`)
+      vals.push(`%\"${module}\"%`)
+      idx += 1
+    }
+    if (wheres.length) {
+      sql += ` WHERE ${wheres.join(' AND ')}`
     }
     sql += ` ORDER BY ${orderBy} ${order} NULLS LAST, doc_id ${order}`
     sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
@@ -2895,11 +3214,22 @@ app.get('/unique_demands/all', async (req, res) => {
     const offset = Math.max(0, Number((req.query && req.query.offset) || 0))
     const onlyValid = envFlagOn((req.query && req.query.onlyValid) || '')
 
+    const moduleRaw = String((req.query && req.query.module) || '').trim()
+    const moduleUp = moduleRaw ? moduleRaw.toUpperCase() : ''
+    const module = /^[A-Z0-9_\/-]{1,24}$/.test(moduleUp) && moduleUp !== 'ALL' && moduleUp !== 'OTHER' ? moduleUp : ''
+
     let sql = 'SELECT * FROM sap_unique_demands'
     const vals = []
     let idx = 1
-    if (onlyValid) {
-      sql += " WHERE demand_type = 'valid'"
+    const wheres = []
+    if (onlyValid) wheres.push("demand_type = 'valid'")
+    if (module) {
+      wheres.push(`((tags_json ILIKE $${idx}) OR (attributes_json ILIKE $${idx}))`)
+      vals.push(`%\"${module}\"%`)
+      idx += 1
+    }
+    if (wheres.length) {
+      sql += ` WHERE ${wheres.join(' AND ')}`
     }
     sql += ` ORDER BY ${orderBy} ${order} NULLS LAST, doc_id ${order}`
     sql += ` OFFSET $${idx} LIMIT $${idx + 1}`
@@ -3341,6 +3671,20 @@ async function handleDemandIngestPg(req, res) {
 
     if (docId && String(docId).startsWith('raw_ud_')) {
       const rawText = String((demandObj && demandObj.raw_text) || '')
+      const rawTrim = String(rawText || '').trim()
+      if (!rawTrim || rawTrim.length < 20) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
+      const inferred = parseDemandFromRawText(rawTrim)
+      if (!inferred || !Array.isArray(inferred.module_codes) || !inferred.module_codes.length) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
+      if (countDemandInfoDims(inferred) < 2) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
       const newlineCount = (rawText.match(/\n/g) || []).length
       if (rawText.length > 500 || newlineCount >= 3) {
         res.status(422).json({ ok: false, error: 'RAW_TEXT_BLOCKY' })
@@ -3355,6 +3699,23 @@ async function handleDemandIngestPg(req, res) {
     if (!payload.raw_text) {
       res.status(400).json({ ok: false, error: 'RAW_TEXT_REQUIRED' })
       return
+    }
+
+    {
+      const rawTrim = String(payload.raw_text || '').trim()
+      if (!rawTrim || rawTrim.length < 20) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
+      const moduleCodes = Array.isArray(payload.module_codes) ? payload.module_codes : []
+      if (!moduleCodes.length) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
+      if (countDemandInfoDims(payload) < 2) {
+        res.status(422).json({ ok: false, error: 'INVALID_DEMAND' })
+        return
+      }
     }
 
     {
@@ -3843,6 +4204,57 @@ app.get('/demand_status/user', async (req, res) => {
   }
 })
 
+app.post('/demand_status/user_bulk', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  const auth = requireUid(req, res)
+  if (!auth) return
+  try {
+    await ensureDemandStatusTable()
+    const body = (req && req.body) || {}
+    const demandIds = Array.isArray(body.demandIds) ? body.demandIds : []
+    const userId = String(body.userId || body.user_id || auth.uid || '').trim()
+    if (userId !== String(auth.uid || '')) {
+      res.status(403).json({ ok: false, error: 'FORBIDDEN' })
+      return
+    }
+
+    const { mapping, nums } = await resolveDemandIdNums(demandIds)
+    if (!mapping.size) {
+      res.json({ ok: true, statuses: {} })
+      return
+    }
+
+    const byNum = new Map()
+    if (nums.length) {
+      const r = await pool.query(
+        'SELECT demand_id, status FROM sap_demand_status WHERE user_id = $1 AND demand_id = ANY($2::bigint[])',
+        [userId, nums],
+      )
+      for (const row of r.rows || []) {
+        const idNum = Number(row.demand_id)
+        if (!Number.isFinite(idNum) || idNum <= 0) continue
+        const s = String(row.status || '').trim()
+        if (!s) continue
+        if (!byNum.has(idNum)) byNum.set(idNum, [])
+        byNum.get(idNum).push(s)
+      }
+    }
+
+    const out = {}
+    for (const [raw, idNum] of mapping.entries()) {
+      if (idNum) out[raw] = byNum.get(idNum) || []
+      else out[raw] = []
+    }
+    res.json({ ok: true, statuses: out })
+  } catch (e) {
+    console.error('demand_status_user_bulk_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
 app.get('/demand_status/latest_nicknames', async (req, res) => {
   if (!demandsFeatureEnabled()) {
     demandsGone(res)
@@ -3979,6 +4391,50 @@ app.get('/demand_reliability/counts', async (req, res) => {
   }
 })
 
+app.post('/demand_reliability/counts_bulk', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  try {
+    await ensureDemandReliabilityTable()
+    const body = (req && req.body) || {}
+    const demandIds = Array.isArray(body.demandIds) ? body.demandIds : []
+
+    const { mapping, nums } = await resolveDemandIdNums(demandIds)
+    if (!mapping.size) {
+      res.json({ ok: true, counts: {} })
+      return
+    }
+
+    const baseCountsByNum = new Map()
+    if (nums.length) {
+      const r = await pool.query(
+        'SELECT demand_id, reliable, COUNT(*)::int AS cnt FROM sap_demand_reliability WHERE demand_id = ANY($1::bigint[]) GROUP BY demand_id, reliable',
+        [nums],
+      )
+      for (const row of r.rows || []) {
+        const idNum = Number(row.demand_id)
+        if (!Number.isFinite(idNum) || idNum <= 0) continue
+        if (!baseCountsByNum.has(idNum)) baseCountsByNum.set(idNum, { reliable: 0, unreliable: 0 })
+        const bucket = baseCountsByNum.get(idNum)
+        if (row.reliable === true) bucket.reliable = Number(row.cnt || 0)
+        else if (row.reliable === false) bucket.unreliable = Number(row.cnt || 0)
+      }
+    }
+
+    const out = {}
+    for (const [raw, idNum] of mapping.entries()) {
+      if (idNum) out[raw] = baseCountsByNum.get(idNum) || { reliable: 0, unreliable: 0 }
+      else out[raw] = { reliable: 0, unreliable: 0 }
+    }
+    res.json({ ok: true, counts: out })
+  } catch (e) {
+    console.error('demand_reliability_counts_bulk_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
 app.get('/demand_reliability/user', async (req, res) => {
   if (!demandsFeatureEnabled()) {
     demandsGone(res)
@@ -4007,6 +4463,54 @@ app.get('/demand_reliability/user', async (req, res) => {
     res.json({ ok: true, reliable: row ? row.reliable : null })
   } catch (e) {
     console.error('demand_reliability_user_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
+app.post('/demand_reliability/user_bulk', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  const auth = requireUid(req, res)
+  if (!auth) return
+  try {
+    await ensureDemandReliabilityTable()
+    const body = (req && req.body) || {}
+    const demandIds = Array.isArray(body.demandIds) ? body.demandIds : []
+    const userId = String(body.userId || body.user_id || auth.uid || '').trim()
+    if (userId !== String(auth.uid || '')) {
+      res.status(403).json({ ok: false, error: 'FORBIDDEN' })
+      return
+    }
+
+    const { mapping, nums } = await resolveDemandIdNums(demandIds)
+    if (!mapping.size) {
+      res.json({ ok: true, reliability: {} })
+      return
+    }
+
+    const byNum = new Map()
+    if (nums.length) {
+      const r = await pool.query(
+        'SELECT demand_id, reliable FROM sap_demand_reliability WHERE user_id = $1 AND demand_id = ANY($2::bigint[])',
+        [userId, nums],
+      )
+      for (const row of r.rows || []) {
+        const idNum = Number(row.demand_id)
+        if (!Number.isFinite(idNum) || idNum <= 0) continue
+        byNum.set(idNum, row.reliable === true ? true : row.reliable === false ? false : null)
+      }
+    }
+
+    const out = {}
+    for (const [raw, idNum] of mapping.entries()) {
+      if (idNum) out[raw] = byNum.has(idNum) ? byNum.get(idNum) : null
+      else out[raw] = null
+    }
+    res.json({ ok: true, reliability: out })
+  } catch (e) {
+    console.error('demand_reliability_user_bulk_failed', e)
     res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
   }
 })

@@ -30,6 +30,16 @@ function getApiBase(): string {
 const API_BASE = getApiBase()
 const API_TOKEN_KEY = 'sapboss_api_token'
 
+const FAVORITES_BULK_TTL_MS = 8000
+const favoritesBulkCache = new Map<string, { ts: number; data: Set<string> }>()
+const favoritesBulkInflight = new Map<string, Promise<Set<string>>>()
+
+function buildDemandIdsKey(demandIds: string[]): string {
+  const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+  uniq.sort()
+  return uniq.join(',')
+}
+
 function safeReadToken(): string {
   try {
     const u: any = typeof uni !== 'undefined' ? (uni as any) : null
@@ -145,26 +155,49 @@ export async function checkFavoritesStatus(demandIds: string[]): Promise<Set<str
   try {
     const storedToken = safeReadToken()
 
-    if (!storedToken) return new Set()
+    if (!storedToken) return new Set<string>()
 
     if (demandIds.length === 0) {
-      return new Set()
+      return new Set<string>()
     }
+
+    const key = buildDemandIdsKey(demandIds)
+    if (!key) return new Set<string>()
+
+    const now = Date.now()
+    const cached = favoritesBulkCache.get(key)
+    if (cached && now - cached.ts <= FAVORITES_BULK_TTL_MS) return cached.data
+
+    const inflight = favoritesBulkInflight.get(key)
+    if (inflight) return inflight
 
     const url = `${API_BASE}/favorites/check_batch`
 
-    // First try with stored token (if any)
-    const resp1: any = await requestJson({
-      url,
-      method: 'POST',
-      data: { demandIds },
-    })
+    const promise: Promise<Set<string>> = (async () => {
+      const uniq = Array.from(new Set((demandIds || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+      if (!uniq.length) return new Set<string>()
 
-    if (resp1 && resp1.ok && Array.isArray(resp1.favorites)) {
-      return new Set(resp1.favorites.map((x: any) => String(x || '').trim()).filter(Boolean))
+      // First try with stored token (if any)
+      const resp1: any = await requestJson({
+        url,
+        method: 'POST',
+        data: { demandIds: uniq },
+      })
+
+      const out: Set<string> =
+        resp1 && resp1.ok && Array.isArray(resp1.favorites)
+          ? new Set<string>(resp1.favorites.map((x: any) => String(x || '').trim()).filter(Boolean))
+          : new Set<string>()
+      favoritesBulkCache.set(key, { ts: Date.now(), data: out })
+      return out
+    })()
+
+    favoritesBulkInflight.set(key, promise)
+    try {
+      return await promise
+    } finally {
+      favoritesBulkInflight.delete(key)
     }
-
-    return new Set()
   } catch (e) {
     return new Set()
   }

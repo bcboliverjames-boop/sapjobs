@@ -211,14 +211,16 @@
     <!-- 需求卡片列表（使用假数据） -->
     <scroll-view
       class="card-list"
-      scroll-y="true"
+      :scroll-y="true"
       :scroll-with-animation="true"
-      lower-threshold="120"
+      :lower-threshold="120"
+      enable-flex="true"
       @scroll="handleListScroll"
       @scrolltolower="loadMore"
     >
+      <view v-if="virtualEnabled" :style="{ height: virtualTopPadding + 'px' }"></view>
       <view
-        v-for="card in filteredDemands"
+        v-for="card in visibleDemands"
         :key="card.id"
         class="demand-card"
         @tap="goDetail(card)"
@@ -399,13 +401,14 @@
         <text v-if="loadingMore" class="list-footer-text">加载中...</text>
         <text v-else class="list-footer-text">没有更多了</text>
       </view>
+      <view v-if="virtualEnabled" :style="{ height: virtualBottomPadding + 'px' }"></view>
     </scroll-view>
   </view>
 </template>
 
-<script setup lang="ts">
+<script lang="ts" setup>
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
-import { onShow, onLoad } from '@dcloudio/uni-app'
+import { onLoad, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { ensureLogin, requireNonGuest, isGuestUser } from '../../utils/cloudbase'
 import { getWorkingHoursWindowStart } from '../../utils/workday-window'
 import { parseDemandText } from '../../utils/demand-parser'
@@ -423,11 +426,15 @@ import {
   markDemandStatus,
   unmarkDemandStatus,
   getDemandStatusCounts,
+  getDemandStatusCountsBulk,
   getUserDemandStatuses,
+  getUserDemandStatusesBulk,
   markDemandReliability,
   unmarkDemandReliability,
   getDemandReliabilityCounts,
+  getDemandReliabilityCountsBulk,
   getUserDemandReliability,
+  getUserDemandReliabilityBulk,
   statusOptions,
 } from '../../utils/demand-status'
 import { getOrCreateUserProfile, updateUserProfile } from '../../utils/user'
@@ -721,6 +728,40 @@ const modulesForUi = computed(() => {
   return out
 })
 
+const virtualEnabled = computed(() => {
+  return (filteredDemands.value || []).length > 40
+})
+
+const visibleDemands = computed(() => {
+  const list = filteredDemands.value || []
+  if (!virtualEnabled.value) return list
+  const client = Math.max(0, Number(virtualClientHeight.value || 0))
+  const est = VIRTUAL_CARD_EST_PX
+  const perScreen = Math.max(1, Math.ceil(client / est))
+  const start = Math.max(0, Math.floor(Number(virtualScrollTop.value || 0) / est) - VIRTUAL_BUFFER)
+  const end = Math.min(list.length, start + perScreen + VIRTUAL_BUFFER * 2)
+  return list.slice(start, end)
+})
+
+const virtualTopPadding = computed(() => {
+  if (!virtualEnabled.value) return 0
+  const est = VIRTUAL_CARD_EST_PX
+  const start = Math.max(0, Math.floor(Number(virtualScrollTop.value || 0) / est) - VIRTUAL_BUFFER)
+  return start * est
+})
+
+const virtualBottomPadding = computed(() => {
+  if (!virtualEnabled.value) return 0
+  const list = filteredDemands.value || []
+  const client = Math.max(0, Number(virtualClientHeight.value || 0))
+  const est = VIRTUAL_CARD_EST_PX
+  const perScreen = Math.max(1, Math.ceil(client / est))
+  const start = Math.max(0, Math.floor(Number(virtualScrollTop.value || 0) / est) - VIRTUAL_BUFFER)
+  const end = Math.min(list.length, start + perScreen + VIRTUAL_BUFFER * 2)
+  const remaining = list.length - end
+  return Math.max(0, remaining * est)
+})
+
 const loading = ref(true)
 const allDemands = ref<DemandCard[]>([])
 const cities = ref<string[]>(['全部'])
@@ -850,6 +891,90 @@ const activeDurationRange = ref<'ALL' | 'SHORT' | 'MID' | 'LONG'>('ALL')
 const activeLanguage = ref<'ALL' | 'EN' | 'JP'>('ALL')
 const activeCooperationMode = ref<CooperationModeOpt>('ALL')
 
+const isAnyFilterActive = computed(() => {
+  const module = String(activeModule.value || '').trim().toUpperCase()
+  const city = String(activeCity.value || '').trim()
+  const keyword = String(searchKeyword.value || '').trim()
+  return (
+    (module && module !== 'ALL') ||
+    activeTimeRange.value !== 'ALL' ||
+    activeTimeField.value !== 'CREATED' ||
+    (city && city !== '全部' && city !== '全国') ||
+    activeRemoteMode.value !== 'ALL' ||
+    activeYearRange.value !== 'ALL' ||
+    activeDurationRange.value !== 'ALL' ||
+    activeLanguage.value !== 'ALL' ||
+    String(activeCooperationMode.value || '').trim() !== 'ALL' ||
+    !!keyword
+  )
+})
+
+const ensureVirtualClientHeight = () => {
+  try {
+    const existing = Math.max(0, Number(virtualClientHeight.value || 0))
+    if (existing > 0) return
+    if (typeof uni !== 'undefined' && (uni as any).getSystemInfoSync) {
+      const info = (uni as any).getSystemInfoSync()
+      const h = Number(info && (info.windowHeight || info.screenHeight || 0))
+      if (Number.isFinite(h) && h > 0) {
+        // 粗略兜底：不扣 header，高度偏大不会影响“撑不满一屏”的判断，只会让我们更倾向于补页
+        virtualClientHeight.value = h
+        return
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const h = Number((window as any).innerHeight || (document && document.documentElement && document.documentElement.clientHeight) || 0)
+      if (Number.isFinite(h) && h > 0) {
+        virtualClientHeight.value = h
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const maybeAutoFillMore = async (reason: string) => {
+  try {
+    if (!isAnyFilterActive.value) return
+    if (loading.value || loadingMore.value) return
+    if (!hasMore.value) return
+
+    ensureVirtualClientHeight()
+    const client = Math.max(0, Number(virtualClientHeight.value || 0))
+    if (!client) return
+    const est = Math.max(80, Number(VIRTUAL_CARD_EST_PX || 0))
+
+    // 过滤后的结果如果连一屏都撑不满，用户无法触发 scrolltolower/nearBottom，需要自动补页
+    const listLen = (filteredDemands.value || []).length
+    const estimatedContentHeight = listLen * est
+    const shouldFill = estimatedContentHeight < client * 1.15
+    if (!shouldFill) {
+      autoFillAttempt.value = 0
+      return
+    }
+
+    const maxAttempts = 8
+    if (autoFillAttempt.value >= maxAttempts) return
+    autoFillAttempt.value += 1
+
+    const seq = autoFillSeq.value
+    // 给 UI 一点时间渲染，避免过度紧凑的循环
+    await new Promise((r) => setTimeout(r, 120))
+    if (seq !== autoFillSeq.value) return
+    if (loading.value || loadingMore.value) return
+    if (!hasMore.value) return
+
+    await loadMore()
+    // loadMore 完成后再评估一次是否需要继续补页
+    await new Promise((r) => setTimeout(r, 120))
+    if (seq !== autoFillSeq.value) return
+    await maybeAutoFillMore(`${reason}:loop`)
+  } catch {
+    // ignore
+  }
+}
+
 const isFolded = ref(false)
 const lastScrollTop = ref(0)
 
@@ -897,7 +1022,14 @@ const handleListScroll = (e: any) => {
   const scrollTop = Number(detail.scrollTop || 0)
   const clientHeight = Number(detail.clientHeight || detail.offsetHeight || 0)
   const scrollHeight = Number(detail.scrollHeight || 0)
-  const nearBottom = scrollHeight - clientHeight - scrollTop < 200
+  const remaining = scrollHeight - clientHeight - scrollTop
+  const prefetchDistance = Math.max(600, Math.floor(clientHeight * 1.2))
+  const nearBottom = remaining < prefetchDistance
+
+  lastListScrollAt.value = Date.now()
+
+  virtualScrollTop.value = scrollTop
+  if (clientHeight) virtualClientHeight.value = clientHeight
 
   // A. 处理筛选面板折叠逻辑
   // 向上滚动超过 50px 且当前是展开状态，则折叠
@@ -928,12 +1060,23 @@ const handleListScroll = (e: any) => {
 const nextOffset = ref(0)
 const loadingMore = ref(false)
 const hasMore = ref(true)
-const pageSize = 80
+const pageSize = 30
 const useLocalFallback = ref(false)
 const isGuest = ref(false)
 const searchKeyword = ref('')
 const refreshingTags = ref(false) // 是否正在刷新标签
 const isAdmin = ref(false)
+
+const autoFillSeq = ref(0)
+const autoFillAttempt = ref(0)
+
+const lastListScrollAt = ref(0)
+const windowScrollAttached = ref(false)
+
+const virtualScrollTop = ref(0)
+const virtualClientHeight = ref(0)
+const VIRTUAL_CARD_EST_PX = 320
+const VIRTUAL_BUFFER = 10
 const commentsByDemand = ref<
   Record<
     string,
@@ -1363,10 +1506,14 @@ const fetchUniqueDemandsPage = async (opts: {
   startTs: number | null
   endTs: number
   field: string
+  module?: string
 }): Promise<SapUniqueDemandDoc[]> => {
   const base = String(API_BASE).replace(/\/+$/, '')
   const limit = Math.max(1, Math.min(200, opts.limit))
   const offset = Math.max(0, opts.offset)
+
+  const moduleRaw = String(opts.module || '').trim()
+  const module = moduleRaw && moduleRaw.toUpperCase() !== 'ALL' && moduleRaw.toUpperCase() !== 'OTHER' ? moduleRaw : ''
 
   if (opts.startTs !== null) {
     const qs = buildQueryString({
@@ -1375,6 +1522,7 @@ const fetchUniqueDemandsPage = async (opts: {
       field: String(opts.field),
       order: 'desc',
       onlyValid: '1',
+      module,
       limit: String(limit),
       offset: String(offset),
     })
@@ -1392,6 +1540,7 @@ const fetchUniqueDemandsPage = async (opts: {
     orderBy: String(opts.field),
     order: 'desc',
     onlyValid: '1',
+    module,
     limit: String(limit),
     offset: String(offset),
   })
@@ -1427,14 +1576,6 @@ const enrichCards = async (cards: DemandCard[]) => {
     return hit.v
   }
 
-  const runInBatches = async (ids: string[], batchSize: number, worker: (id: string) => Promise<void>) => {
-    const size = Math.max(1, Math.min(30, batchSize))
-    for (let i = 0; i < ids.length; i += size) {
-      const chunk = ids.slice(i, i + size)
-      await Promise.all(chunk.map((id) => worker(id)))
-    }
-  }
-
   if (demandIds.length > 0) {
     demandIds.forEach((id) => {
       const st = getFresh(statusCountsCache, id)
@@ -1444,42 +1585,56 @@ const enrichCards = async (cards: DemandCard[]) => {
     })
 
     const missingIds = demandIds.filter((id) => !statusCountsMap.has(id) || !reliabilityCountsMap.has(id))
-    // 不阻塞首屏渲染：后台补齐 counts，且做并发限流（避免 2N 个请求同时起飞）
-    runInBatches(missingIds, 8, async (id) => {
+    // 不阻塞首屏渲染：后台 bulk 补齐 counts（把 2N 个请求降为 2 个请求）
+    ;(async () => {
       const requestTs = Date.now()
       try {
-        const [statusCounts, reliabilityCounts] = await Promise.all([
-          getDemandStatusCounts(id),
-          getDemandReliabilityCounts(id),
+        const [statusBulk, reliabilityBulk] = await Promise.all([
+          getDemandStatusCountsBulk(missingIds),
+          getDemandReliabilityCountsBulk(missingIds),
         ])
-        statusCountsCache.set(id, { v: statusCounts, ts: requestTs })
-        reliabilityCountsCache.set(id, { v: reliabilityCounts, ts: requestTs })
-        statusCountsMap.set(id, statusCounts)
-        reliabilityCountsMap.set(id, reliabilityCounts)
 
-        const card = cards.find((c) => getInteractionId(c) === id)
-        if (card) {
-          const lastStatusTs = Number(card.statusCountsUpdatedAt || 0)
-          if (lastStatusTs <= requestTs) {
-            card.statusCounts = statusCounts
-            card.statusCountsUpdatedAt = requestTs
+        missingIds.forEach((id) => {
+          const statusCounts = statusBulk && statusBulk[id] ? statusBulk[id] : undefined
+          const reliabilityCounts = reliabilityBulk && reliabilityBulk[id] ? reliabilityBulk[id] : undefined
+          if (statusCounts) {
+            statusCountsCache.set(id, { v: statusCounts, ts: requestTs })
+            statusCountsMap.set(id, statusCounts)
           }
-          const lastTs = Number(card.reliabilityCountsUpdatedAt || 0)
-          if (lastTs <= requestTs) {
-            card.reliabilityCounts = reliabilityCounts
-            card.reliabilityCountsUpdatedAt = requestTs
+          if (reliabilityCounts) {
+            reliabilityCountsCache.set(id, { v: reliabilityCounts, ts: requestTs })
+            reliabilityCountsMap.set(id, reliabilityCounts)
           }
-        }
+
+          const card = cards.find((c) => getInteractionId(c) === id)
+          if (card) {
+            if (statusCounts) {
+              const lastStatusTs = Number(card.statusCountsUpdatedAt || 0)
+              if (lastStatusTs <= requestTs) {
+                card.statusCounts = statusCounts
+                card.statusCountsUpdatedAt = requestTs
+              }
+            }
+            if (reliabilityCounts) {
+              const lastTs = Number(card.reliabilityCountsUpdatedAt || 0)
+              if (lastTs <= requestTs) {
+                card.reliabilityCounts = reliabilityCounts
+                card.reliabilityCountsUpdatedAt = requestTs
+              }
+            }
+          }
+        })
       } catch (e) {
-        console.error(`Failed to load status/reliability for demand ${id}:`, e)
-        // 不要把“失败”缓存成 0：否则从详情返回/刷新时可能被短暂网络/后端抖动锁死为 0（60s TTL）
-        // 这里保持缺省，让下一次 enrich/refresh 有机会重新拉取服务端真实 counts。
-        statusCountsCache.delete(id)
-        reliabilityCountsCache.delete(id)
-        statusCountsMap.delete(id)
-        reliabilityCountsMap.delete(id)
+        console.error('Failed to bulk load status/reliability counts:', e)
+        // 不把失败缓存成 0，允许后续重试
+        missingIds.forEach((id) => {
+          statusCountsCache.delete(id)
+          reliabilityCountsCache.delete(id)
+          statusCountsMap.delete(id)
+          reliabilityCountsMap.delete(id)
+        })
       }
-    }).catch(() => {})
+    })().catch(() => {})
   }
 
   let authUid = ''
@@ -1492,28 +1647,36 @@ const enrichCards = async (cards: DemandCard[]) => {
   } catch {}
 
   if (authUid) {
-    await Promise.all(
-      cards.map(async (card) => {
-        const key = getInteractionId(card)
-        card.statusCounts = statusCountsMap.get(key) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
-        card.reliabilityCounts = reliabilityCountsMap.get(key) || { reliable: 0, unreliable: 0 }
-        try {
-          const [userStatuses, userReliability] = await Promise.all([
-            getUserDemandStatuses(key, authUid),
-            getUserDemandReliability(key, authUid),
-          ])
-          card.userStatuses = userStatuses || []
-          const override = getReliabilityOverride(key)
-          const normalized = userReliability === true ? true : userReliability === false ? false : null
-          card.userReliability = override !== undefined ? override : normalized
-        } catch (e) {
-          console.error(`Failed to load user status/reliability for demand ${card.id}:`, e)
-          card.userStatuses = []
-          const override = getReliabilityOverride(key)
-          card.userReliability = override !== undefined ? override : null
-        }
-      })
-    )
+    let userStatusesMap: Record<string, string[]> = {}
+    let userReliabilityMap: Record<string, boolean | null> = {}
+    try {
+      ;[userStatusesMap, userReliabilityMap] = await Promise.all([
+        getUserDemandStatusesBulk(demandIds, authUid),
+        getUserDemandReliabilityBulk(demandIds, authUid),
+      ])
+    } catch (e) {
+      console.error('Failed to bulk load user status/reliability:', e)
+      userStatusesMap = {}
+      userReliabilityMap = {}
+    }
+
+    cards.forEach((card) => {
+      const key = getInteractionId(card)
+      card.statusCounts = statusCountsMap.get(key) || { applied: 0, interviewed: 0, onboarded: 0, closed: 0 }
+      card.reliabilityCounts = reliabilityCountsMap.get(key) || { reliable: 0, unreliable: 0 }
+      try {
+        card.userStatuses = Array.isArray(userStatusesMap[key]) ? userStatusesMap[key] : []
+        const override = getReliabilityOverride(key)
+        const raw = Object.prototype.hasOwnProperty.call(userReliabilityMap || {}, key) ? userReliabilityMap[key] : null
+        const normalized = raw === true ? true : raw === false ? false : null
+        card.userReliability = override !== undefined ? override : normalized
+      } catch (e) {
+        console.error(`Failed to apply user status/reliability for demand ${card.id}:`, e)
+        card.userStatuses = []
+        const override = getReliabilityOverride(key)
+        card.userReliability = override !== undefined ? override : null
+      }
+    })
   } else {
     cards.forEach((card) => {
       const key = getInteractionId(card)
@@ -1545,40 +1708,74 @@ const loadCommentsForDemandIds = async (ids: string[]) => {
     const uniq = Array.from(new Set(ids.map((x) => String(x || '').trim()).filter(Boolean)))
     if (!uniq.length) return
 
+    const buildKey = (arr: string[]): string => {
+      const t = Array.from(new Set((arr || []).map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 200)
+      t.sort()
+      return t.join(',')
+    }
+
+    const COMMENTS_TTL_MS = 8000
+    const now = Date.now()
+    const key = buildKey(uniq)
+    const cacheAny = (loadCommentsForDemandIds as any)
+    const cache: Map<string, { ts: number; map: any }> = cacheAny.__cache || (cacheAny.__cache = new Map())
+    const inflight: Map<string, Promise<void>> = cacheAny.__inflight || (cacheAny.__inflight = new Map())
+    const cached = cache.get(key)
+    if (cached && now - cached.ts <= COMMENTS_TTL_MS) {
+      commentsByDemand.value = cached.map
+      return
+    }
+    const existing = inflight.get(key)
+    if (existing) {
+      await existing
+      return
+    }
+
     const base = String(API_BASE).replace(/\/+$/, '')
-    const resp: any = await requestJson({
-      url: `${base}/demand_comments`,
-      method: 'POST',
-      data: {
-        demandIds: uniq,
-        limit: 200,
-      },
-    })
 
-    const rows: any[] = resp && resp.ok && Array.isArray(resp.comments) ? resp.comments : []
-    const nextMap = { ...(commentsByDemand.value || {}) } as any
+    const promise = (async () => {
+      const resp: any = await requestJson({
+        url: `${base}/demand_comments`,
+        method: 'POST',
+        data: {
+          demandIds: uniq,
+          limit: 200,
+        },
+      })
 
-    uniq.forEach((id) => {
-      nextMap[id] = []
-    })
+      const rows: any[] = resp && resp.ok && Array.isArray(resp.comments) ? resp.comments : []
+      const nextMap = { ...(commentsByDemand.value || {}) } as any
 
-    ;(rows || []).forEach((doc: any) => {
-      const dId = doc.demand_id
-      if (!dId) return
-      if (!nextMap[dId]) nextMap[dId] = []
-      if (nextMap[dId].length < 10) {
-        nextMap[dId].push({
-          _id: doc._id,
-          demand_id: dId,
-          content: doc.content,
-          likes: doc.likes || 0,
-          dislikes: doc.dislikes || 0,
-          createdAtText: doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('zh-CN') : '',
-        })
-      }
-    })
+      uniq.forEach((id) => {
+        nextMap[id] = []
+      })
 
-    commentsByDemand.value = nextMap
+      ;(rows || []).forEach((doc: any) => {
+        const dId = doc.demand_id
+        if (!dId) return
+        if (!nextMap[dId]) nextMap[dId] = []
+        if (nextMap[dId].length < 10) {
+          nextMap[dId].push({
+            _id: doc._id,
+            demand_id: dId,
+            content: doc.content,
+            likes: doc.likes || 0,
+            dislikes: doc.dislikes || 0,
+            createdAtText: doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('zh-CN') : '',
+          })
+        }
+      })
+
+      commentsByDemand.value = nextMap
+      cache.set(key, { ts: Date.now(), map: nextMap })
+    })()
+
+    inflight.set(key, promise)
+    try {
+      await promise
+    } finally {
+      inflight.delete(key)
+    }
   } catch (e) {
     console.error('Failed to load demand comments:', e)
   }
@@ -1599,6 +1796,14 @@ const loadFromCloud = async (opts?: { append?: boolean }) => {
 
     const field = activeTimeField.value === 'UPDATED' ? 'last_updated_time_ts' : 'created_time_ts'
 
+    const module = (() => {
+      const raw = String(activeModule.value || '').trim()
+      const up = raw.toUpperCase()
+      if (!raw) return ''
+      if (up === 'ALL' || up === 'OTHER') return ''
+      return raw
+    })()
+
     const offset = opts?.append ? nextOffset.value : 0
     const docs = await fetchUniqueDemandsPage({
       offset,
@@ -1606,6 +1811,7 @@ const loadFromCloud = async (opts?: { append?: boolean }) => {
       startTs,
       endTs,
       field,
+      module,
     })
 
     const cards = (docs || []).map((d, idx) => {
@@ -1723,6 +1929,9 @@ const loadFromCloud = async (opts?: { append?: boolean }) => {
     await loadCommentsForDemandIds(cards.map((d) => d.id))
     loading.value = false
     useLocalFallback.value = false
+
+    // 筛选条件下，如果列表未撑满视窗，会导致无法触发滚动加载；这里自动补页。
+    maybeAutoFillMore(opts?.append ? 'append' : 'reload').catch(() => {})
     return
   } catch (e) {
     console.error('Failed to load demands from cloud:', e)
@@ -1735,11 +1944,46 @@ const loadFromCloud = async (opts?: { append?: boolean }) => {
 }
 
 const reloadFromCloud = async () => {
+  autoFillSeq.value += 1
+  autoFillAttempt.value = 0
+  ensureVirtualClientHeight()
   loading.value = true
   nextOffset.value = 0
   hasMore.value = true
   loadingMore.value = false
   await loadFromCloud({ append: false })
+}
+
+const handleWindowScroll = () => {
+  try {
+    // 如果 scroll-view 自己在滚动，优先使用列表 scroll 逻辑，避免重复触发
+    if (Date.now() - Number(lastListScrollAt.value || 0) < 800) return
+    if (!hasMore.value) return
+    if (loading.value || loadingMore.value) return
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const doc = document.documentElement
+    const scrollTop = Number(doc && (doc.scrollTop || (document.body && (document.body as any).scrollTop) || 0))
+    const clientHeight = Number(doc && (doc.clientHeight || window.innerHeight || 0))
+    const scrollHeight = Number(doc && (doc.scrollHeight || 0))
+    if (!scrollHeight || !clientHeight) return
+
+    const remaining = scrollHeight - clientHeight - scrollTop
+    const prefetchDistance = Math.max(600, Math.floor(clientHeight * 1.2))
+    const nearBottom = remaining < prefetchDistance
+
+    // 让虚拟列表也能跟随窗口滚动（当 scroll-view 不承担滚动时）
+    virtualScrollTop.value = scrollTop
+    if (clientHeight) virtualClientHeight.value = clientHeight
+
+    if (!nearBottom) return
+    const now = Date.now()
+    if (now - lastNearBottomTriggerAt.value < 1200) return
+    lastNearBottomTriggerAt.value = now
+    loadMore()
+  } catch {
+    // ignore
+  }
 }
 
 const loadMore = async () => {
@@ -1757,6 +2001,16 @@ const loadMore = async () => {
 }
 
 const lastNearBottomTriggerAt = ref(0)
+const lastReachBottomTriggerAt = ref(0)
+
+onReachBottom(() => {
+  if (!hasMore.value) return
+  if (loading.value || loadingMore.value) return
+  const now = Date.now()
+  if (now - lastReachBottomTriggerAt.value < 1200) return
+  lastReachBottomTriggerAt.value = now
+  loadMore()
+})
 
 const loadCommentsForDemands = async () => {
   try {
@@ -1816,6 +2070,15 @@ const loadCommentsForDemands = async () => {
 onMounted(() => {
   reloadFromCloud()
 
+  try {
+    if (!windowScrollAttached.value && typeof window !== 'undefined') {
+      window.addEventListener('scroll', handleWindowScroll, { passive: true } as any)
+      windowScrollAttached.value = true
+    }
+  } catch {
+    // ignore
+  }
+
   // 监听详情页收藏变更，返回广场时立即同步心形状态
   uni.$on('favoriteChanged', (payload: any) => {
     const demandId = String(payload?.demandId || '').trim()
@@ -1830,6 +2093,15 @@ onMounted(() => {
 
 onUnmounted(() => {
   uni.$off('favoriteChanged')
+
+  try {
+    if (windowScrollAttached.value && typeof window !== 'undefined') {
+      window.removeEventListener('scroll', handleWindowScroll as any)
+      windowScrollAttached.value = false
+    }
+  } catch {
+    // ignore
+  }
 })
 
 const refreshAuthState = async () => {
@@ -2673,8 +2945,10 @@ const handleRefreshTags = async () => {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    height: 100vh;
     padding: 0;
     background: #F5F1E8;
+    overflow: hidden;
   }
   
   .page-header-unified {
@@ -2942,9 +3216,8 @@ const handleRefreshTags = async () => {
   
   .card-list {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     padding-bottom: 40rpx;
+    min-height: 0;
   }
   
   .demand-card {
