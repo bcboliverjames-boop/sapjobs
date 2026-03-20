@@ -33,7 +33,12 @@ In other words: once you consider the current request “handled/answered”, yo
      - The page is already opened in the controlled browser and logged in.
 
 3. **MCP操作步骤（必须执行）**
-   - **选择页面**：用 MCP 选择 `filehelper.weixin.qq.com` 对应的 page。
+   - **优先复用已登录页面**：
+     - 先用 MCP `list_pages` 找到已打开的 `filehelper.weixin.qq.com` 页面。
+     - 若存在多个，优先选择**已扫码登录完成**的那个（能看到聊天输入框 `textbox multiline` + “发送”按钮）。
+     - 只在**找不到已登录页面**时，才允许 `navigate/new_page` 打开 FileHelper。
+     - 若页面显示“扫码登录/使用手机微信扫码”等登录态，视为未登录，需要用户扫码后再继续。
+   - **选择页面**：用 MCP `select_page` 选中上述可用页面。
    - **获取元素**：调用页面快照（snapshot）定位：
      - 聊天输入框（通常为 `textbox multiline`）
      - “发送”按钮（通常为 link/button，文本为“发送”）
