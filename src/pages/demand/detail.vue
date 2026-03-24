@@ -156,24 +156,30 @@
               <text class="related-excerpt">{{ item.raw_text }}</text>
               
               <view v-if="canViewContact || isSelfProvider(item)" class="contact-box" @tap.stop>
-                <view v-if="!getRelatedProviderProfile(item)" class="contact-empty">发布者未同步，暂无联系方式</view>
+                <view v-if="!hasRelatedContactInfo(item)" class="contact-empty">发布者暂未提供联系方式</view>
                 <view v-else>
-                  <view v-if="!isSelfProvider(item) && !canShareProviderContact(getRelatedProviderProfile(item))" class="contact-empty">发布者未开放联系方式</view>
-                  <view v-else-if="!getRelatedProviderProfile(item)?.wechat_id && !getRelatedProviderProfile(item)?.qq_id" class="contact-empty">发布者暂未提供联系方式</view>
+                  <view
+                    v-if="!isSelfProvider(item) && getRelatedProviderProfile(item) && !canShareProviderContact(getRelatedProviderProfile(item))"
+                    class="contact-empty"
+                  >发布者未开放联系方式</view>
                   <view v-else>
                     <view v-if="!isSelfProvider(item) && !isContactUnlocked(item)" class="unlock-action" @tap.stop="unlockRelatedContact(item)">
                       <text class="unlock-btn-text">点击消耗积分解锁联系方式</text>
                     </view>
                     <view v-else class="contact-details">
-                      <view v-if="getRelatedProviderProfile(item)?.wechat_id" class="contact-line" @tap.stop="copyContact('wechat', String(getRelatedProviderProfile(item)?.wechat_id))">
+                      <view v-if="getRelatedWechatId(item)" class="contact-line" @tap.stop="copyContact('wechat', getRelatedWechatId(item))">
                         <text class="c-label">微信：</text>
-                        <text class="c-value">{{ getRelatedProviderProfile(item)?.wechat_id }}</text>
+                        <text class="c-value">{{ getRelatedWechatId(item) }}</text>
                         <text class="c-copy">复制</text>
                       </view>
-                      <view v-if="getRelatedProviderProfile(item)?.qq_id" class="contact-line" @tap.stop="copyContact('qq', String(getRelatedProviderProfile(item)?.qq_id))">
+                      <view v-if="getRelatedQqNumber(item)" class="contact-line" @tap.stop="copyContact('qq', getRelatedQqNumber(item))">
                         <text class="c-label">QQ：</text>
-                        <text class="c-value">{{ getRelatedProviderProfile(item)?.qq_id }}</text>
+                        <text class="c-value">{{ getRelatedQqNumber(item) }}</text>
                         <text class="c-copy">复制</text>
+                      </view>
+                      <view v-if="getRelatedContactRemark(item)" class="contact-line" @tap.stop>
+                        <text class="c-label">备注：</text>
+                        <text class="c-value">{{ getRelatedContactRemark(item) }}</text>
                       </view>
                     </view>
                   </view>
@@ -477,6 +483,9 @@ type RelatedDemandItem = {
   createdAt?: Date | string
   provider_user_id?: string
   provider_name: string
+  wechat_id?: string
+  qq_number?: string
+  contact_remark?: string
   similarity: number
   isSelf?: boolean
 }
@@ -801,6 +810,9 @@ const relatedDemands = computed<RelatedDemandItem[]>(() => {
       createdAt: (base as any).createdAt || (base as any).updatedAt || new Date(),
       provider_user_id: (base as any).provider_user_id,
       provider_name: (base as any).provider_name || '未知',
+      wechat_id: String((base as any).wechat_id || '').trim() || undefined,
+      qq_number: String((base as any).qq_number || '').trim() || undefined,
+      contact_remark: String((base as any).contact_remark || '').trim() || undefined,
       similarity: 1,
       isSelf: true,
     })
@@ -827,6 +839,9 @@ const relatedDemands = computed<RelatedDemandItem[]>(() => {
       createdAt: s.createdAt,
       provider_user_id: s.provider_user_id,
       provider_name: s.provider_name,
+      wechat_id: String((s as any).wechat_id || '').trim() || undefined,
+      qq_number: String((s as any).qq_number || '').trim() || undefined,
+      contact_remark: String((s as any).contact_remark || '').trim() || undefined,
       similarity: s.similarity,
       isSelf: false,
     }))
@@ -923,6 +938,9 @@ onLoad(async (options) => {
                     : Number((mapped as any).richness_score || 0),
                 provider_name: raw.provider_name || mapped.provider_name,
                 provider_user_id: raw.provider_user_id || mapped.provider_user_id,
+                wechat_id: raw.wechat_id || mapped.wechat_id,
+                qq_number: raw.qq_number || mapped.qq_number,
+                contact_remark: raw.contact_remark || mapped.contact_remark,
                 createdAt: raw.createdAt || mapped.createdAt,
                 updatedAt: raw.updatedAt || mapped.updatedAt,
               }
@@ -1506,6 +1524,28 @@ const getRelatedProviderProfile = (item: RelatedDemandItem): UserProfile | null 
   const viewerUid = String(viewerProfile.value?.uid || '').trim()
   if (viewerUid && pid === viewerUid) return viewerProfile.value
   return relatedProfilesById.value[pid] || null
+}
+
+const getRelatedWechatId = (item: RelatedDemandItem): string => {
+  const fromItem = String(item?.wechat_id || '').trim()
+  if (fromItem) return fromItem
+  const p = getRelatedProviderProfile(item)
+  return String(p?.wechat_id || '').trim()
+}
+
+const getRelatedQqNumber = (item: RelatedDemandItem): string => {
+  const fromItem = String(item?.qq_number || '').trim()
+  if (fromItem) return fromItem
+  const p = getRelatedProviderProfile(item)
+  return String(p?.qq_id || '').trim()
+}
+
+const getRelatedContactRemark = (item: RelatedDemandItem): string => {
+  return String(item?.contact_remark || '').trim()
+}
+
+const hasRelatedContactInfo = (item: RelatedDemandItem): boolean => {
+  return Boolean(getRelatedWechatId(item) || getRelatedQqNumber(item) || getRelatedContactRemark(item))
 }
 
 const canShareProviderContact = (p: UserProfile | null): boolean => {

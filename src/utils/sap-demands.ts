@@ -15,6 +15,9 @@ export type SapDemandRecord = {
   richness_score?: number // 需求丰富度评分
   provider_name: string
   provider_user_id?: string // 信息提供者的用户ID，用于获取联系方式
+  wechat_id?: string
+  qq_number?: string
+  contact_remark?: string
   unique_demand_id?: string
   createdAt?: Date | string // 创建时间
   updatedAt?: Date | string // 更新时间
@@ -477,6 +480,9 @@ export async function fetchSapDemandsFromCloud(): Promise<SapDemandRecord[]> {
     daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
     provider_name: String(doc.provider_name || '未知'),
     provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
+    wechat_id: String(doc.wechat_id || '').trim() || undefined,
+    qq_number: String(doc.qq_number || '').trim() || undefined,
+    contact_remark: String(doc.contact_remark || '').trim() || undefined,
     unique_demand_id: doc.unique_demand_id ? String(doc.unique_demand_id) : undefined,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -487,8 +493,18 @@ export async function fetchSapDemandsFromCloud(): Promise<SapDemandRecord[]> {
 export async function fetchSapDemandById(id: string): Promise<SapDemandRecord | null> {
   if (!id) return null
   const base = String(DEMANDS_API_BASE).replace(/\/+$/, '')
+  
+  // 如果是字符串ID（如UUID），使用by_key API
+  let url: string
+  if (/^[a-f0-9]{32,}$/i.test(id)) {
+    url = `${base}/demands/by_key/${encodeURIComponent(String(id))}`
+  } else {
+    // 数字ID，使用原有API
+    url = `${base}/demands/${encodeURIComponent(String(id))}`
+  }
+  
   const resp: any = await requestJson({
-    url: `${base}/demands/${encodeURIComponent(String(id))}`,
+    url,
     method: 'GET',
   })
 
@@ -512,6 +528,9 @@ export async function fetchSapDemandById(id: string): Promise<SapDemandRecord | 
     daily_rate: doc.daily_rate ? String(doc.daily_rate) : undefined,
     provider_name: String(doc.provider_name || '未知'),
     provider_user_id: doc.provider_user_id ? String(doc.provider_user_id) : undefined,
+    wechat_id: String(doc.wechat_id || '').trim() || undefined,
+    qq_number: String(doc.qq_number || '').trim() || undefined,
+    contact_remark: String(doc.contact_remark || '').trim() || undefined,
     unique_demand_id: doc.unique_demand_id ? String(doc.unique_demand_id) : undefined,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
