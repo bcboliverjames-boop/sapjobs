@@ -1136,6 +1136,7 @@ function overlapRatio(a, b) {
 }
 
 function eqScore(a, b) {
+  if (!a && !b) return 1
   if (!a || !b) return 0
   return a === b ? 1 : 0
 }
@@ -5373,6 +5374,36 @@ app.post('/demands/check_similar', async (req, res) => {
     }
 
     out.sort((a, b) => b.similarity - a.similarity)
+
+    // Enrich matched unique demands with contact info from raw demands
+    const uniqueIds = out.map((x) => x.id).filter(Boolean)
+    if (uniqueIds.length > 0) {
+      try {
+        await ensureDemandsTable()
+        const contactRows = await pool.query(
+          `SELECT DISTINCT ON (unique_demand_id) unique_demand_id, wechat_id, qq_number, contact_remark
+           FROM sap_demands
+           WHERE unique_demand_id = ANY($1) AND (wechat_id IS NOT NULL AND wechat_id != '')
+           ORDER BY unique_demand_id, id DESC`,
+          [uniqueIds],
+        )
+        const contactMap = {}
+        for (const cr of (contactRows && contactRows.rows) || []) {
+          contactMap[cr.unique_demand_id] = cr
+        }
+        for (const item of out) {
+          const ci = contactMap[item.id]
+          if (ci) {
+            item.wechat_id = String(ci.wechat_id || '').trim() || undefined
+            item.qq_number = String(ci.qq_number || '').trim() || undefined
+            item.contact_remark = String(ci.contact_remark || '').trim() || undefined
+          }
+        }
+      } catch (e) {
+        console.error('enrich_contact_failed', e)
+      }
+    }
+
     res.json({ ok: true, hasSimilar: out.length > 0, similarDemands: out })
   } catch (e) {
     console.error('demand_check_similar_failed', e)

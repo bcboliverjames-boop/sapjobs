@@ -977,9 +977,16 @@ const maybeAutoFillMore = async (reason: string) => {
 
 const isFolded = ref(false)
 const lastScrollTop = ref(0)
+const userFoldedManually = ref(false)
 
 const toggleFold = () => {
   isFolded.value = !isFolded.value
+  // 如果是用户主动收起，标记为手动操作
+  if (isFolded.value) {
+    userFoldedManually.value = true
+  } else {
+    userFoldedManually.value = false
+  }
 }
 
 const getModuleLabel = (code: string) => {
@@ -1032,14 +1039,11 @@ const handleListScroll = (e: any) => {
   if (clientHeight) virtualClientHeight.value = clientHeight
 
   // A. 处理筛选面板折叠逻辑
-  // 向上滚动超过 50px 且当前是展开状态，则折叠
+  // 向下滚动超过 50px 且当前是展开状态，则自动折叠
   if (scrollTop > 50 && scrollTop > lastScrollTop.value && !isFolded.value) {
     isFolded.value = true
   }
-  // 向下滚动（回到顶部）则自动展开
-  if (scrollTop < 20 && isFolded.value) {
-    isFolded.value = false
-  }
+  // 不再自动展开——用户需点击"展开筛选"按钮手动展开
   lastScrollTop.value = scrollTop
 
   // B. 处理瀑布流加载逻辑
