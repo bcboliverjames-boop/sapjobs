@@ -971,6 +971,74 @@ onLoad(async (options) => {
 
     if (id) {
       const decodedId = safeDecodeURIComponent(String(id))
+
+      // If id looks like a unique demand doc_id (raw_ud_ prefix), redirect to uniqueId flow
+      if (/^raw_ud_/i.test(decodedId)) {
+        uniqueDemandId.value = decodedId
+        demandId.value = decodedId
+        const u = await fetchUniqueDemandById(decodedId)
+        if (u) {
+          let mapped = mapUniqueToDemand(u)
+          const canonicalRawId = String((u as any)?.canonical_raw_id || '').trim()
+          if (canonicalRawId) {
+            try {
+              const raw = await fetchSapDemandById(canonicalRawId)
+              if (raw && raw.raw_text) {
+                currentRawId.value = canonicalRawId
+                demandId.value = canonicalRawId
+                const parsed = parseDemandText(String(raw.raw_text || '').trim())
+                const moduleCodes = (parsed.module_codes || [])
+                  .map((x) => String(x || '').trim().toUpperCase())
+                  .filter(Boolean)
+                const moduleLabels = moduleCodes.map((c) => {
+                  if (c === 'FICO') return 'FI/CO'
+                  if (c === 'OTHER') return '其他'
+                  return c
+                })
+                mapped = {
+                  ...mapped,
+                  raw_text: String(raw.raw_text || '').trim(),
+                  module_codes: moduleCodes,
+                  module_labels: moduleLabels,
+                  city: parsed.city || '',
+                  duration_text: parsed.duration_text || '',
+                  years_text: parsed.years_text || '',
+                  language: parsed.language || '',
+                  daily_rate: parsed.daily_rate || '',
+                  richness_score:
+                    (raw as any)?.richness_score !== undefined && (raw as any)?.richness_score !== null
+                      ? Number((raw as any).richness_score)
+                      : Number((mapped as any).richness_score || 0),
+                  provider_name: raw.provider_name || mapped.provider_name,
+                  provider_user_id: raw.provider_user_id || mapped.provider_user_id,
+                  wechat_id: raw.wechat_id || mapped.wechat_id,
+                  qq_number: raw.qq_number || mapped.qq_number,
+                  contact_remark: raw.contact_remark || mapped.contact_remark,
+                  createdAt: raw.createdAt || mapped.createdAt,
+                  updatedAt: raw.updatedAt || mapped.updatedAt,
+                }
+              }
+            } catch (e) {
+              console.error('Failed to load canonical raw demand:', e)
+            }
+          }
+          demand.value = mapped
+          viewerProfile.value = await getUserProfileOnly()
+          loadUnlockState()
+          await loadSimilarDemands(mapped.raw_text, currentRawId.value || undefined, undefined)
+          await loadStatusData()
+          await loadReliabilityData()
+          try {
+            isFavorited.value = await isFavorite(demandId.value)
+          } catch (e) {
+            console.error('Failed to check favorite state:', e)
+          }
+          return
+        }
+        demand.value = null
+        return
+      }
+
       demandId.value = decodedId
       let fromCloud: SapDemandRecord | null = null
       try {
