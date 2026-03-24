@@ -41,6 +41,63 @@ function loadDotEnvFile(filePath) {
   }
 }
 
+async function handleProfileIngestPg(req, res) {
+  const auth = requireIngestAuth(req, res)
+  if (!auth) return
+
+  try {
+    const body = (req && req.body) || {}
+    const profileObj = body && body.profile && typeof body.profile === 'object' ? body.profile : body
+
+    const uidRaw = String((profileObj && (profileObj.cloudbase_uid || profileObj.uid || profileObj._id || profileObj.id)) || '').trim()
+    if (!uidRaw) {
+      res.status(400).json({ ok: false, error: 'UID_REQUIRED' })
+      return
+    }
+
+    const nickname = String((profileObj && (profileObj.nickname || profileObj.provider_name || profileObj.name)) || '').trim()
+    const wechatId = String((profileObj && (profileObj.wechat_id || profileObj.wechatId || profileObj.wechat)) || '').trim()
+    const qqId = String((profileObj && (profileObj.qq_id || profileObj.qqId || profileObj.qq_number || profileObj.qqNumber || profileObj.qq)) || '').trim()
+    const canShare = profileObj && typeof profileObj.can_share_contact === 'boolean' ? !!profileObj.can_share_contact : undefined
+
+    await ensureAccountsTable()
+    await ensureProfilesColumns()
+
+    const sql = `
+      INSERT INTO user_profiles (
+        cloudbase_uid,
+        nickname,
+        wechat_id,
+        qq_id,
+        can_share_contact,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, now(), now())
+      ON CONFLICT (cloudbase_uid) DO UPDATE SET
+        nickname = COALESCE(EXCLUDED.nickname, user_profiles.nickname),
+        wechat_id = CASE WHEN EXCLUDED.wechat_id IS NULL OR EXCLUDED.wechat_id = '' THEN user_profiles.wechat_id ELSE EXCLUDED.wechat_id END,
+        qq_id = CASE WHEN EXCLUDED.qq_id IS NULL OR EXCLUDED.qq_id = '' THEN user_profiles.qq_id ELSE EXCLUDED.qq_id END,
+        can_share_contact = COALESCE(EXCLUDED.can_share_contact, user_profiles.can_share_contact),
+        updated_at = now()
+      RETURNING *
+    `
+
+    const row = await pool.query(sql, [
+      uidRaw,
+      nickname || null,
+      wechatId || null,
+      qqId || null,
+      typeof canShare === 'undefined' ? null : canShare,
+    ])
+
+    res.json({ ok: true, profile: mapProfileRow(row && row.rows ? row.rows[0] : null), ingestMode: auth.ingestMode })
+  } catch (e) {
+    console.error('profile_ingest_pg_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+}
+
 function loadLocalEnv() {
   const baseDir = __dirname
   loadDotEnvFile(path.join(baseDir, '.env.local'))
@@ -1243,6 +1300,10 @@ function sanitizeDemandPayload(input, fallbackAuth) {
   const provider_user_id = String((input && (input.provider_user_id || input.provider_id || input.uid)) || '').trim()
   const provider_name = String((input && (input.provider_name || input.publisher_name || input.nickname)) || '').trim()
 
+  const wechat_id = String((input && (input.wechat_id || input.wechatId || input.provider_wechat_id)) || '').trim()
+  const qq_number = String((input && (input.qq_number || input.qqNumber || input.provider_qq_number)) || '').trim()
+  const contact_remark = String((input && (input.contact_remark || input.contactRemark || input.phone || input.phone_number)) || '').trim()
+
   const payload = {
     ...input,
     raw_text: rawText,
@@ -1262,6 +1323,9 @@ function sanitizeDemandPayload(input, fallbackAuth) {
     cooperation_mode: (input && (input.cooperation_mode || input.cooperationMode)) || (inferred && inferred.cooperation_mode) || '',
     provider_user_id: provider_user_id || (fallbackAuth && fallbackAuth.uid) || 'local_ingest',
     provider_name: provider_name || (fallbackAuth && fallbackAuth.nickname) || '未知',
+    wechat_id: wechat_id || '',
+    qq_number: qq_number || '',
+    contact_remark: contact_remark || '',
     updatedAt: now,
   }
 
@@ -1295,6 +1359,9 @@ async function ensureDemandsTable() {
       time_requirement text,
       provider_name text,
       provider_user_id text,
+      wechat_id text,
+      qq_number text,
+      contact_remark text,
       unique_demand_id text,
       unique_override_by text,
       unique_override_at timestamptz,
@@ -1306,6 +1373,9 @@ async function ensureDemandsTable() {
   await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_demand_id text`)
   await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_override_by text`)
   await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS unique_override_at timestamptz`)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS wechat_id text`)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS qq_number text`)
+  await pool.query(`ALTER TABLE sap_demands ADD COLUMN IF NOT EXISTS contact_remark text`)
   await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_created_at_idx ON sap_demands(created_at DESC)`)
   await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_provider_user_idx ON sap_demands(provider_user_id)`)
   await pool.query(`CREATE INDEX IF NOT EXISTS sap_demands_unique_demand_idx ON sap_demands(unique_demand_id)`)
@@ -1990,6 +2060,9 @@ function mapDemandRow(row) {
     time_requirement: row.time_requirement || '',
     provider_name: row.provider_name || '未知',
     provider_user_id: row.provider_user_id || undefined,
+    wechat_id: row.wechat_id || '',
+    qq_number: row.qq_number || '',
+    contact_remark: row.contact_remark || '',
     unique_demand_id: row.unique_demand_id || '',
     unique_override_by: row.unique_override_by || '',
     unique_override_at: row.unique_override_at,
@@ -2014,6 +2087,9 @@ async function upsertDemand(payload, source) {
 
   const providerName = String(normalized && normalized.provider_name || '').trim()
   const providerUid = String(normalized && normalized.provider_user_id || '').trim()
+  const wechatId = String(normalized && (normalized.wechat_id || normalized.wechatId) || '').trim()
+  const qqNumber = String(normalized && (normalized.qq_number || normalized.qqNumber) || '').trim()
+  const contactRemark = String(normalized && (normalized.contact_remark || normalized.contactRemark) || '').trim()
 
   const vals = [
     demandKey,
@@ -2033,6 +2109,9 @@ async function upsertDemand(payload, source) {
     normalized.time_requirement ? String(normalized.time_requirement) : null,
     providerName || null,
     providerUid || null,
+    wechatId || null,
+    qqNumber || null,
+    contactRemark || null,
     source || null,
   ]
 
@@ -2042,13 +2121,13 @@ async function upsertDemand(payload, source) {
       demand_key, raw_text, module_codes, module_labels,
       city, duration_text, years_text, language, daily_rate,
       is_remote, cooperation_mode, work_mode, consultant_level, project_cycle, time_requirement,
-      provider_name, provider_user_id, source
+      provider_name, provider_user_id, wechat_id, qq_number, contact_remark, source
     )
     VALUES (
       $1, $2, $3::text[], $4::text[],
       $5, $6, $7, $8, $9,
       $10, $11, $12, $13, $14, $15,
-      $16, $17, $18
+      $16, $17, $18, $19, $20, $21
     )
     ON CONFLICT (demand_key) DO UPDATE SET
       raw_text = EXCLUDED.raw_text,
@@ -2067,6 +2146,9 @@ async function upsertDemand(payload, source) {
       time_requirement = EXCLUDED.time_requirement,
       provider_name = EXCLUDED.provider_name,
       provider_user_id = EXCLUDED.provider_user_id,
+      wechat_id = CASE WHEN EXCLUDED.wechat_id IS NULL OR EXCLUDED.wechat_id = '' THEN sap_demands.wechat_id ELSE EXCLUDED.wechat_id END,
+      qq_number = CASE WHEN EXCLUDED.qq_number IS NULL OR EXCLUDED.qq_number = '' THEN sap_demands.qq_number ELSE EXCLUDED.qq_number END,
+      contact_remark = CASE WHEN EXCLUDED.contact_remark IS NULL OR EXCLUDED.contact_remark = '' THEN sap_demands.contact_remark ELSE EXCLUDED.contact_remark END,
       source = EXCLUDED.source,
       updated_at = now()
     RETURNING *
@@ -5077,6 +5159,31 @@ app.get('/demands/:id(\d+)', async (req, res) => {
   }
 })
 
+app.get('/demands/by_key/:key', async (req, res) => {
+  if (!demandsFeatureEnabled()) {
+    demandsGone(res)
+    return
+  }
+  try {
+    await ensureDemandsTable()
+    const key = String(req.params && req.params.key || '').trim()
+    if (!key) {
+      res.status(400).json({ ok: false, error: 'KEY_REQUIRED' })
+      return
+    }
+    const r = await pool.query('SELECT * FROM sap_demands WHERE demand_key = $1 LIMIT 1', [key])
+    const row = r.rows && r.rows[0]
+    if (!row) {
+      res.status(404).json({ ok: false, error: 'NOT_FOUND' })
+      return
+    }
+    res.json({ ok: true, demand: mapDemandRow(row) })
+  } catch (e) {
+    console.error('demand_get_by_key_failed', e)
+    res.status(500).json({ ok: false, error: 'INTERNAL_ERROR' })
+  }
+})
+
 app.get('/demands/mine_raw', async (req, res) => {
   if (!demandsFeatureEnabled()) {
     demandsGone(res)
@@ -5290,6 +5397,8 @@ app.post('/auth/register', handleAuthRegister)
 app.post('/auth/login', handleAuthLogin)
 
 app.post('/demands/ingest', handleDemandIngest)
+
+app.post('/profile/ingest', handleProfileIngestPg)
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 const host = process.env.HOST || '127.0.0.1'
