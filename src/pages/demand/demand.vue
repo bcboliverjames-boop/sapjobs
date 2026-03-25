@@ -3368,28 +3368,34 @@ const handleRefreshTags = async () => {
   
   .card-reliability-bar {
     display: flex;
-    gap: 12rpx;
-    margin-top: 16rpx;
+    gap: 8rpx;
+    margin-top: 12rpx;
   }
   
   .card-reliability-item {
     display: flex;
     align-items: center;
-    gap: 8rpx;
-    padding: 8rpx 20rpx;
+    gap: 4rpx;
+    padding: 8rpx 12rpx;
     background: #F8FAFC;
     border-radius: 12rpx;
     border: 1rpx solid #E2E8F0;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  
+  .card-reliability-icon {
+    font-size: 20rpx;
   }
   
   .card-reliability-label {
-    font-size: 22rpx;
+    font-size: 20rpx;
     color: #475569;
     font-weight: 600;
   }
   
   .card-reliability-count {
-    font-size: 20rpx;
+    font-size: 18rpx;
     color: #94A3B8;
   }
 
