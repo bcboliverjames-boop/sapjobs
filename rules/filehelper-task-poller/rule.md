@@ -13,9 +13,12 @@ After a task run completes, keep watching the FileHelper chat for new tasks.
 ## Constraints (must understand)
 
 - MCP tool actions are executed **only during an active assistant run**. If there is no active run, this rule cannot truly run “in the background” by itself.
-- Therefore, there are two supported modes:
-  1. **Interactive polling mode (MCP within this chat):** The user asks to start polling, and the assistant performs a 10-minute polling loop while the run is active.
-  2. **Unattended mode (external scheduler):** Use an OS scheduler (e.g., Windows Task Scheduler) + automation script to run every 10 minutes.
+
+**Only supported mode:**
+
+1. **Interactive polling mode (MCP within this chat):** The user asks to start polling, and the assistant performs a 10-minute polling loop while the run is active.
+
+**Hard rule:** When the user says `监控`, the assistant must always enter **Interactive polling mode**. Do not propose or implement any other monitoring mode.
 
 ## Mandatory workflow (must follow)
 
@@ -24,8 +27,7 @@ After a task run completes, keep watching the FileHelper chat for new tasks.
 1. After finishing a task (including verification and reporting results to FileHelper), the assistant must:
    - Tell the user it is ready to enter FileHelper polling mode.
    - Confirm polling mode.
-     - **Mode 1 (default, interactive polling):** keep listening continuously until the user explicitly stops it.
-     - **Unattended mode** (requires extra setup)
+     - **Interactive polling:** keep listening continuously until the user explicitly stops it.
 
 2. **Mode 1 stop condition (explicit user command)**
    - Stop polling immediately when the user says any of:
@@ -64,22 +66,9 @@ After a task run completes, keep watching the FileHelper chat for new tasks.
 If DOM is unstable, fallback to:
 - Take a snapshot and parse the last `StaticText` that belongs to the message list (avoid UI labels like “发送/选择文件/文件传输助手”).
 
-### Phase C: Unattended mode (external scheduler)
-
-If the user explicitly requests unattended mode, the assistant should:
-
-1. Propose a minimal Node.js script (e.g., Playwright) that:
-   - Opens FileHelper (requires login persistence)
-   - Every 10 minutes reads latest message
-   - If message starts with `任务`, sends the content to this assistant (or calls a webhook) to initiate processing
-
-2. Provide Windows Task Scheduler setup steps.
-
-**Important:** Do not implement unattended mode without user confirmation because it requires installing dependencies and handling authentication/logins.
-
 ## Acceptance criteria
 
-- Poll interval is 10 minutes (interactive loop or external scheduler).
+- Poll interval is 10 minutes (interactive loop).
 - Latest message is correctly extracted.
 - Messages starting with `任务` reliably trigger a new task handling flow.
 - After each task completes, results are posted to FileHelper and confirmed as sent.

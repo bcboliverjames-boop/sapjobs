@@ -197,3 +197,24 @@
     - `复制申请模板`
     - `一键发邮件（H5）` (launched `mailto:` external handler)
   - Observation: email still shows placeholder `your@email.com` (needs production value).
+
+## 2026-03-25
+
+### Change
+- Home page insights:
+  - Fixed guest mode incorrectly forcing all metrics to use a 30-day window, which caused `今日需求 / 今日上新 / 本周上新` to show the same (or near-same) large counts in WeChat in-app browser.
+  - Added timeout fallback for `getWorkingHoursWindowStart()` to avoid first-load delays when holiday data fetch is slow.
+  - Added short TTL (5 min) local cache for insights to improve perceived load speed.
+- Unique demands API requests:
+  - Added request timeout and no-cache headers to reduce WeChat/H5 caching risk and improve robustness.
+
+### Checks
+- `npm run type-check`: PASS
+
+### Manual verification checklist (prod/H5)
+- Open home page in desktop browser and WeChat in-app browser:
+  - Verify `今日需求` is 24h-by-update (workday 24h) and not equal to `今日上新` / `本周上新` unless data genuinely matches.
+  - Verify `今日上新` is 24h-by-created.
+  - Verify `本周上新` is 7d-by-created.
+- Hard refresh once and re-open:
+  - Verify first paint shows cached numbers quickly, then updates in background.

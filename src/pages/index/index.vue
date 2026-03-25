@@ -185,7 +185,6 @@ import {
   fetchUniqueDemandsListByTimeRange,
   type SapUniqueDemandDoc,
 } from '../../utils/sap-unique-demands'
-import { getWorkingHoursWindowStart } from '../../utils/workday-window'
  
 
 // 跳转到演示页面
@@ -349,6 +348,33 @@ const weekNewArrivalsTopModule = ref<string>('')
 const trendDays = ref<{ date: string; count: number; heightRpx: number }[]>([])
 const trendMax = ref(0)
 const todayNewList = ref<SapUniqueDemandDoc[]>([])
+
+const INSIGHTS_CACHE_KEY = 'sapboss_home_unique_insights_v1'
+const INSIGHTS_CACHE_TTL_MS = 5 * 60 * 1000
+
+const readInsightsCache = (): any | null => {
+  try {
+    const raw = uni.getStorageSync(INSIGHTS_CACHE_KEY)
+    if (!raw) return null
+    const obj = typeof raw === 'string' ? JSON.parse(raw) : raw
+    if (!obj || typeof obj !== 'object') return null
+    const ts = Number((obj as any).ts || 0)
+    if (!ts || !Number.isFinite(ts)) return null
+    if (Date.now() - ts > INSIGHTS_CACHE_TTL_MS) return null
+    return (obj as any).data || null
+  } catch {
+    return null
+  }
+}
+
+const writeInsightsCache = (data: any) => {
+  try {
+    uni.setStorageSync(
+      INSIGHTS_CACHE_KEY,
+      JSON.stringify({ ts: Date.now(), data })
+    )
+  } catch {}
+}
 
 const fallbackText = (v: string) => (v && v.trim() ? v : '—')
 
@@ -654,20 +680,10 @@ const loadUniqueInsights = async () => {
     const now = new Date()
     const endTs = now.getTime()
 
-    const workStart = await getWorkingHoursWindowStart({ now, hours: 24 })
-    let startTs = workStart.getTime()
-
-    if (skipCloudDb) {
-      startTs = endTs - 30 * 24 * 60 * 60 * 1000
-    }
+    let startTs = endTs - 24 * 60 * 60 * 1000
 
     let weekStartTs = endTs - 7 * 24 * 60 * 60 * 1000
     let monthStartTs = endTs - 30 * 24 * 60 * 60 * 1000
-
-    if (skipCloudDb) {
-      weekStartTs = startTs
-      monthStartTs = startTs
-    }
 
     let allValidDocs: SapUniqueDemandDoc[] | null = null
 
@@ -867,6 +883,20 @@ const loadUniqueInsights = async () => {
     })
     buildTrendDays(byDay)
 
+    writeInsightsCache({
+      insightsMode: insightsMode.value,
+      todayDemand: todayDemand.value,
+      todayDemandYoy: todayDemandYoy.value,
+      todayNewArrivals: todayNewArrivals.value,
+      todayNewYoy: todayNewYoy.value,
+      weekNewArrivals: weekNewArrivals.value,
+      weekNewYoy: weekNewYoy.value,
+      todayModuleBars: todayModuleBars.value,
+      trendDays: trendDays.value,
+      trendMax: trendMax.value,
+      todayNewList: todayNewList.value,
+    })
+
   } catch (e: any) {
     console.error('Failed to load unique insights:', e)
     todayDemand.value = null
@@ -905,6 +935,22 @@ const copyUniqueDemand = (item: SapUniqueDemandDoc) => {
 }
 
 onMounted(() => {
+  try {
+    const cached = readInsightsCache()
+    if (cached) {
+      insightsMode.value = cached.insightsMode || insightsMode.value
+      todayDemand.value = typeof cached.todayDemand === 'number' ? cached.todayDemand : todayDemand.value
+      todayDemandYoy.value = typeof cached.todayDemandYoy === 'number' ? cached.todayDemandYoy : todayDemandYoy.value
+      todayNewArrivals.value = typeof cached.todayNewArrivals === 'number' ? cached.todayNewArrivals : todayNewArrivals.value
+      todayNewYoy.value = typeof cached.todayNewYoy === 'number' ? cached.todayNewYoy : todayNewYoy.value
+      weekNewArrivals.value = typeof cached.weekNewArrivals === 'number' ? cached.weekNewArrivals : weekNewArrivals.value
+      weekNewYoy.value = typeof cached.weekNewYoy === 'number' ? cached.weekNewYoy : weekNewYoy.value
+      todayModuleBars.value = Array.isArray(cached.todayModuleBars) ? cached.todayModuleBars : todayModuleBars.value
+      trendDays.value = Array.isArray(cached.trendDays) ? cached.trendDays : trendDays.value
+      trendMax.value = typeof cached.trendMax === 'number' ? cached.trendMax : trendMax.value
+      todayNewList.value = Array.isArray(cached.todayNewList) ? cached.todayNewList : todayNewList.value
+    }
+  } catch {}
   loadUniqueInsights()
 })
 

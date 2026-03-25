@@ -89,7 +89,18 @@ function buildRowObject(cols, row) {
 
 function makeDocId(rowObj) {
   const providerId = String(rowObj.provider_id || '').trim()
-  if (providerId) return `prov_${providerId}`
+  if (providerId) {
+    // Demands ingest uses parsed_demands.provider_id as provider_user_id and stores it in PG as UUID-like strings.
+    // To make demand detail page join work (sap_demands.provider_user_id = user_profiles.cloudbase_uid),
+    // we must preserve UUID provider_id as-is.
+    if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(providerId)) return providerId
+
+    // Preserve existing account uid formats if present.
+    if (providerId.startsWith('acc_')) return providerId
+
+    // Legacy provider id format.
+    return `prov_${providerId}`
+  }
 
   const wechat = String(rowObj.wechat_id || '').trim()
   const qq = String(rowObj.qq_number || '').trim()
@@ -214,7 +225,6 @@ async function main() {
             wechat_id = EXCLUDED.wechat_id,
             qq_id = EXCLUDED.qq_id,
             can_share_contact = EXCLUDED.can_share_contact,
-            points = EXCLUDED.points,
             updated_at = EXCLUDED.updated_at
         `
 
