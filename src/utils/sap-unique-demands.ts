@@ -48,12 +48,9 @@ function requestJson<T = any>(opts: { url: string; method?: 'GET' | 'POST'; data
       url: opts.url,
       method: opts.method || 'GET',
       data: opts.data,
-      timeout: 8000,
+      timeout: 15000,
       header: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-        Expires: '0',
         ...(opts.header || {}),
       },
       success: (res) => resolve((res as any)?.data as T),
