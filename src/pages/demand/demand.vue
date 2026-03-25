@@ -3311,31 +3311,39 @@ const handleRefreshTags = async () => {
   
   .card-status-bar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16rpx;
+    flex-wrap: nowrap;
+    gap: 8rpx;
     margin-top: 24rpx;
     padding-top: 24rpx;
     border-top: 1rpx solid #F1F5F9;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   
   .card-status-item {
     display: flex;
     align-items: center;
-    gap: 8rpx;
-    padding: 10rpx 20rpx;
+    gap: 4rpx;
+    padding: 8rpx 12rpx;
     background: #F8FAFC;
     border-radius: 12rpx;
     border: 1rpx solid #E2E8F0;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  
+  .card-status-icon {
+    font-size: 20rpx;
   }
   
   .card-status-label {
-    font-size: 22rpx;
+    font-size: 20rpx;
     color: #475569;
     font-weight: 600;
   }
   
   .card-status-count {
-    font-size: 20rpx;
+    font-size: 18rpx;
     color: #94A3B8;
   }
 

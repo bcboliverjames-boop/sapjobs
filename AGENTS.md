@@ -5,6 +5,19 @@ alwaysApply: true
 inclusion: always
 ---
 
+# 全局规则
+
+## 🌐 语言规则（最高优先级）
+
+**⚠️ 强制要求：所有 AI 回复必须使用中文**
+
+- **适用范围**：所有项目、所有对话、所有场景
+- **无例外情况**：无论用户使用何种语言提问，AI 必须始终用中文回复
+- **代码注释**：代码中的注释也应使用中文（除非是英文项目的标准注释）
+- **技术术语**：可以保留英文技术术语，但解释说明必须用中文
+
+---
+
 # CloudBase AI Development Rules Guide
 
 ## 🗂️ Rule File Path Resolution Strategy
